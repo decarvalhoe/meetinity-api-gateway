@@ -12,7 +12,7 @@ def health():
 @app.route('/api/users/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_users(path):
     """Proxy vers le service utilisateur"""
-    user_service_url = f"http://localhost:5001/{path}"
+    user_service_url = "http://localhost:5001/{}".format(path)
     try:
         response = requests.request(
             method=request.method,
@@ -26,10 +26,27 @@ def proxy_users(path):
         return jsonify({"error": "User service unavailable"}), 503
 
 
+@app.route('/api/auth/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def proxy_auth(path):
+    """Proxy vers le service d'authentification"""
+    auth_service_url = "http://localhost:5002/{}".format(path)
+    try:
+        response = requests.request(
+            method=request.method,
+            url=auth_service_url,
+            headers=request.headers,
+            data=request.get_data(),
+            params=request.args
+        )
+        return response.content, response.status_code
+    except requests.exceptions.RequestException:
+        return jsonify({"error": "Auth service unavailable"}), 503
+
+
 @app.route('/api/events/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_events(path):
     """Proxy vers le service événements"""
-    event_service_url = f"http://localhost:5003/{path}"
+    event_service_url = "http://localhost:5003/{}".format(path)
     try:
         response = requests.request(
             method=request.method,
