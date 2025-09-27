@@ -63,3 +63,25 @@ def test_auth_proxy_failure(client, monkeypatch):
     )
     response = client.post("/api/auth/login")
     assert response.status_code == 502
+
+
+def test_cors_allows_any_origin_when_env_absent(monkeypatch):
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    monkeypatch.setenv("USER_SERVICE_URL", "http://upstream")
+    monkeypatch.setenv("JWT_SECRET", "secret")
+    monkeypatch.setenv("RATE_LIMIT_AUTH", "10/minute")
+
+    mock_resp = Mock()
+    mock_resp.status_code = 200
+    monkeypatch.setattr(
+        "src.app.requests.get", lambda *args, **kwargs: mock_resp
+    )
+
+    app = create_app()
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    origin = "https://example.com"
+    response = client.get("/health", headers={"Origin": origin})
+
+    assert response.headers.get("Access-Control-Allow-Origin") == origin
