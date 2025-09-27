@@ -55,6 +55,11 @@ def test_users_requires_jwt(client):
     assert response.status_code == 401
 
 
+def test_options_users_without_authorization(client):
+    response = client.open("/api/users", method="OPTIONS")
+    assert response.status_code != 401
+
+
 def test_auth_proxy_failure(client, monkeypatch):
     def fail_request(*args, **kwargs):
         raise requests.RequestException()

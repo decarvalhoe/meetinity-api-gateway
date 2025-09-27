@@ -7,6 +7,8 @@ import jwt
 def require_jwt(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
+        if request.method == "OPTIONS":
+            return fn(*args, **kwargs)
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             return jsonify({"error": "Unauthorized"}), 401
