@@ -31,9 +31,13 @@ def create_app():
     app.config["RATE_LIMIT_AUTH"] = os.getenv("RATE_LIMIT_AUTH", "10/minute")
 
     # CORS configuration
-    origins_env = os.getenv("CORS_ORIGINS", "")
-    origins = [o.strip() for o in origins_env.split(",") if o.strip()]
-    CORS(app, origins=origins)
+    origins_env = os.getenv("CORS_ORIGINS")
+    origins = []
+    if origins_env:
+        origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+
+    cors_kwargs = {"origins": origins} if origins else {}
+    CORS(app, **cors_kwargs)
 
     # Rate limiter initialization
     limiter.init_app(app)
