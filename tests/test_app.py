@@ -38,6 +38,18 @@ def test_health(client):
     assert response.json["upstreams"]["user_service"] == "up"
 
 
+def test_health_upstream_down(client, monkeypatch):
+    def fail_health(*args, **kwargs):
+        raise requests.RequestException()
+
+    monkeypatch.setattr("src.app.requests.get", fail_health)
+
+    response = client.get("/health")
+    assert response.status_code == 503
+    assert response.json["status"] == "error"
+    assert response.json["upstreams"]["user_service"] == "down"
+
+
 def test_users_requires_jwt(client):
     response = client.get("/api/users/me")
     assert response.status_code == 401

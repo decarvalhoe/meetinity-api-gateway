@@ -61,11 +61,13 @@ def create_app():
                     status = "up"
             except requests.RequestException:
                 pass
+        overall_status = "ok" if status == "up" else "error"
+        http_status = 200 if status == "up" else 503
         return jsonify({
-            "status": "ok",
+            "status": overall_status,
             "service": "api-gateway",
             "upstreams": {"user_service": status},
-        })
+        }), http_status
 
     @app.errorhandler(429)
     def ratelimit_handler(e):
