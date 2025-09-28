@@ -17,6 +17,7 @@ from .security.api_keys import configure_api_keys
 from .security.oauth import OIDCProvider
 from .security.signatures import configure_request_signatures
 from .services.registry import create_service_registry
+from .transformations import build_pipeline, load_transformation_rules
 from .utils.responses import error_response
 
 
@@ -187,8 +188,6 @@ def create_app() -> Flask:
             app.config["OAUTH_PROVIDER_URL"], cache_ttl=oauth_cache_ttl
         )
 
-    from .routes.proxy import proxy_bp
-
     app.extensions["service_registry"] = create_service_registry(app.config)
     app.extensions["resilience_middleware"] = ResilienceMiddleware(
         failure_threshold=app.config["CIRCUIT_BREAKER_FAILURE_THRESHOLD"],
@@ -197,6 +196,16 @@ def create_app() -> Flask:
         backoff_factor=app.config["RESILIENCE_BACKOFF_FACTOR"],
         max_backoff=app.config["RESILIENCE_MAX_BACKOFF"],
     )
+
+    rules_source = os.getenv("TRANSFORMATION_RULES_PATH") or os.getenv(
+        "TRANSFORMATION_RULES"
+    )
+    if rules_source:
+        rules = load_transformation_rules(rules_source, base_dir=os.getcwd())
+        pipeline = build_pipeline(rules, base_dir=os.getcwd())
+        app.extensions["transformation_pipeline"] = pipeline
+
+    from .routes.proxy import proxy_bp
 
     app.register_blueprint(proxy_bp)
 
