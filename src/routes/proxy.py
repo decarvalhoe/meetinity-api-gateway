@@ -35,7 +35,18 @@ def _forward(path):
         )
     except requests.RequestException:
         return jsonify({"error": "Bad gateway"}), 502
-    return Response(resp.content, resp.status_code, resp.headers.items())
+
+    response_headers = None
+    raw_headers = getattr(getattr(resp, "raw", None), "headers", None)
+    if raw_headers is not None:
+        try:
+            response_headers = list(raw_headers.items())
+        except (TypeError, AttributeError):
+            response_headers = None
+    if response_headers is None:
+        response_headers = list(resp.headers.items())
+
+    return Response(resp.content, resp.status_code, response_headers)
 
 
 @proxy_bp.route(

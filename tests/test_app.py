@@ -3,6 +3,7 @@ import sys
 import pytest
 import requests
 from unittest.mock import Mock
+from urllib3._collections import HTTPHeaderDict
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.app import create_app  # noqa: E402
@@ -107,6 +108,30 @@ def test_proxy_preserves_duplicate_query_params(client, monkeypatch):
 
     assert response.status_code == 200
     assert captured["params"] == [("tag", "a"), ("tag", "b")]
+
+
+def test_proxy_preserves_multiple_set_cookie_headers(client, monkeypatch):
+    header_dict = HTTPHeaderDict()
+    header_dict.add("Set-Cookie", "a=1; Path=/")
+    header_dict.add("Set-Cookie", "b=2; Path=/")
+
+    mock_resp = Mock()
+    mock_resp.status_code = 200
+    mock_resp.content = b"{}"
+    mock_resp.raw = Mock(headers=header_dict)
+    mock_resp.headers = {}
+
+    monkeypatch.setattr(
+        "src.routes.proxy.requests.request", lambda *args, **kwargs: mock_resp
+    )
+
+    response = client.get("/api/auth/session")
+
+    assert response.status_code == 200
+    assert response.headers.getlist("Set-Cookie") == [
+        "a=1; Path=/",
+        "b=2; Path=/",
+    ]
 
 
 def test_cors_allows_any_origin_when_env_absent(monkeypatch):
