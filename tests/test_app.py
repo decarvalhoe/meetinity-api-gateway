@@ -52,6 +52,7 @@ def client(app):
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
+    assert response.json["status"] == "up"
     assert response.json["upstreams"]["user_service"] == "up"
 
 
@@ -63,7 +64,7 @@ def test_health_upstream_down(client, monkeypatch):
 
     response = client.get("/health")
     assert response.status_code == 503
-    assert response.json["status"] == "error"
+    assert response.json["status"] == "down"
     assert response.json["upstreams"]["user_service"] == "down"
 
 
