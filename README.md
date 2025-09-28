@@ -53,6 +53,7 @@ The gateway uses environment variables for configuration:
 - `JWT_SECRET`: Secret key for JWT token validation
 - `CORS_ORIGINS`: Comma-separated list of allowed CORS origins
 - `RATE_LIMIT_AUTH`: Rate limit for authentication endpoints (default: "10/minute")
+- `LOG_LEVEL`: Logging level for structured request logs (default: `INFO`)
 
 ## API Routes
 

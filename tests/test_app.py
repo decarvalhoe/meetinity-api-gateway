@@ -1,9 +1,24 @@
+import json
+import logging
 import os
 import sys
+from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock
+
+import jwt
 import pytest
 import requests
-from unittest.mock import Mock
 from urllib3._collections import HTTPHeaderDict
+
+
+class _CapturingHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.app import create_app  # noqa: E402
@@ -53,7 +68,7 @@ def client(app):
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json["status"] == "up"
+    assert response.json["status"] == "ok"
     assert response.json["upstreams"]["user_service"] == "up"
 
 
@@ -65,13 +80,14 @@ def test_health_upstream_down(client, monkeypatch):
 
     response = client.get("/health")
     assert response.status_code == 503
-    assert response.json["status"] == "down"
+    assert response.json["status"] == "error"
     assert response.json["upstreams"]["user_service"] == "down"
 
 
 def test_users_requires_jwt(client):
     response = client.get("/api/users/me")
     assert response.status_code == 401
+    assert response.json == {"error": {"code": 401, "message": "Unauthorized"}}
 
 
 def test_options_users_without_authorization(client):
@@ -87,6 +103,7 @@ def test_auth_proxy_failure(client, monkeypatch):
     )
     response = client.post("/api/auth/login")
     assert response.status_code == 502
+    assert response.json == {"error": {"code": 502, "message": "Bad Gateway"}}
 
 
 def test_proxy_preserves_duplicate_query_params(client, monkeypatch):
@@ -94,6 +111,7 @@ def test_proxy_preserves_duplicate_query_params(client, monkeypatch):
 
     def fake_request(*args, **kwargs):
         captured["params"] = kwargs.get("params")
+        captured["timeout"] = kwargs.get("timeout")
         mock_resp = Mock()
         mock_resp.status_code = 200
         mock_resp.content = b"{}"
@@ -108,6 +126,7 @@ def test_proxy_preserves_duplicate_query_params(client, monkeypatch):
 
     assert response.status_code == 200
     assert captured["params"] == [("tag", "a"), ("tag", "b")]
+    assert captured["timeout"] == (2, 10)
 
 
 def test_proxy_preserves_multiple_set_cookie_headers(client, monkeypatch):
@@ -134,6 +153,121 @@ def test_proxy_preserves_multiple_set_cookie_headers(client, monkeypatch):
     ]
 
 
+def test_proxy_generates_request_id_and_forwarded_headers(client, monkeypatch):
+    captured = {}
+
+    def fake_request(*args, **kwargs):
+        captured["headers"] = kwargs.get("headers")
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+        return mock_resp
+
+    monkeypatch.setattr("src.routes.proxy.requests.request", fake_request)
+
+    response = client.get(
+        "/api/auth/session",
+        base_url="https://localhost",
+        environ_base={"REMOTE_ADDR": "198.51.100.4"},
+    )
+
+    assert response.status_code == 200
+    assert "X-Request-ID" in response.headers
+    forwarded_headers = captured["headers"]
+    assert forwarded_headers["X-Forwarded-For"] == "198.51.100.4"
+    assert forwarded_headers["X-Forwarded-Proto"] == "https"
+    assert forwarded_headers["X-Request-ID"] == response.headers["X-Request-ID"]
+
+
+def test_proxy_appends_forwarded_for_header(client, monkeypatch):
+    captured = {}
+
+    def fake_request(*args, **kwargs):
+        captured["headers"] = kwargs.get("headers")
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+        return mock_resp
+
+    monkeypatch.setattr("src.routes.proxy.requests.request", fake_request)
+
+    response = client.get(
+        "/api/auth/session",
+        headers={"X-Forwarded-For": "203.0.113.10"},
+        environ_base={"REMOTE_ADDR": "198.51.100.4"},
+    )
+
+    assert response.status_code == 200
+    forwarded_headers = captured["headers"]
+    assert (
+        forwarded_headers["X-Forwarded-For"]
+        == "203.0.113.10, 198.51.100.4"
+    )
+
+
+def test_request_logging_includes_metadata(client):
+    handler = _CapturingHandler()
+    handler.setLevel(logging.INFO)
+    client.application.logger.addHandler(handler)
+    try:
+        response = client.get(
+            "/health",
+            headers={"X-Forwarded-For": "203.0.113.20"},
+            environ_base={"REMOTE_ADDR": "198.51.100.4"},
+        )
+    finally:
+        client.application.logger.removeHandler(handler)
+
+    assert response.status_code == 200
+    assert handler.records
+    payload = json.loads(handler.records[-1].getMessage())
+    assert payload["method"] == "GET"
+    assert payload["path"] == "/health"
+    assert payload["status"] == 200
+    assert payload["ip"] == "203.0.113.20"
+    assert payload["request_id"] == response.headers["X-Request-ID"]
+
+
+def test_request_logging_includes_user_id(client, monkeypatch):
+    mock_resp = Mock()
+    mock_resp.status_code = 200
+    mock_resp.content = b"{}"
+    mock_resp.headers = {}
+
+    monkeypatch.setattr(
+        "src.routes.proxy.requests.request", lambda *args, **kwargs: mock_resp
+    )
+
+    handler = _CapturingHandler()
+    handler.setLevel(logging.INFO)
+    client.application.logger.addHandler(handler)
+
+    token = jwt.encode(
+        {
+            "sub": "user-123",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "iat": datetime.now(timezone.utc),
+        },
+        "secret",
+        algorithm="HS256",
+    )
+
+    try:
+        response = client.get(
+            "/api/users/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    finally:
+        client.application.logger.removeHandler(handler)
+
+    assert response.status_code == 200
+    assert handler.records
+    payload = json.loads(handler.records[-1].getMessage())
+    assert payload["user_id"] == "user-123"
+
+
 def test_cors_allows_any_origin_when_env_absent(monkeypatch):
     app = _create_app_without_cors_origins(monkeypatch)
     origin = "https://example.com"
@@ -150,3 +284,4 @@ def test_cors_allows_another_origin_when_env_absent(monkeypatch):
         response = client.get("/health", headers={"Origin": origin})
 
     assert response.headers.get("Access-Control-Allow-Origin") == origin
+

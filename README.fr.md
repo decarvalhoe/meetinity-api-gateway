@@ -53,6 +53,7 @@ La passerelle utilise des variables d'environnement pour la configuration :
 - `JWT_SECRET` : Clé secrète pour la validation des tokens JWT
 - `CORS_ORIGINS` : Liste séparée par des virgules des origines CORS autorisées
 - `RATE_LIMIT_AUTH` : Limite de débit pour les points d'authentification (par défaut : "10/minute")
+- `LOG_LEVEL` : Niveau de journalisation pour les logs structurés (par défaut : `INFO`)
 
 ## Routes API
 
