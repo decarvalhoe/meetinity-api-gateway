@@ -3,11 +3,12 @@ import gzip
 import io
 import logging
 import os
+import time
 from typing import Any, Callable, Dict, Tuple
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, current_app, jsonify, request
+from flask import Flask, current_app, g, jsonify, request
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -53,6 +54,28 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_mapping(raw: str) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for item in raw.split(","):
+        key, sep, value = item.partition("=")
+        key = key.strip()
+        if not key or not sep:
+            continue
+        mapping[key] = value.strip()
+    return mapping
+
+
+def _normalize_versions(raw: str | None, fallback: tuple[str, ...]) -> tuple[str, ...]:
+    values = _split_env_list(raw or "")
+    if not values:
+        values = list(fallback)
+    seen: dict[str, None] = {}
+    for item in values:
+        if item and item not in seen:
+            seen[item] = None
+    return tuple(seen.keys()) or fallback
 
 
 def _configure_ip_filters(app: Flask) -> None:
@@ -514,6 +537,22 @@ def create_app() -> Flask:
     app.config["COMPRESSION_GZIP_LEVEL"] = int(os.getenv("COMPRESSION_GZIP_LEVEL", "6"))
     app.config["COMPRESSION_BR_QUALITY"] = int(os.getenv("COMPRESSION_BR_QUALITY", "5"))
 
+    configured_versions = _normalize_versions(os.getenv("API_VERSIONS"), ("v1", "v2"))
+    default_version = os.getenv("API_DEFAULT_VERSION") or (configured_versions[0] if configured_versions else "v1")
+    if default_version not in configured_versions:
+        configured_versions = (default_version, *[v for v in configured_versions if v != default_version])
+    app.config["API_VERSIONS"] = configured_versions
+    app.config["API_DEFAULT_VERSION"] = default_version
+    app.config["API_VERSION_DEPRECATIONS"] = _parse_mapping(os.getenv("API_VERSION_DEPRECATIONS", ""))
+    app.config["API_VERSION_SUNSETS"] = _parse_mapping(os.getenv("API_VERSION_SUNSETS", ""))
+    app.config["API_VERSION_DEPRECATION_LINKS"] = _parse_mapping(
+        os.getenv("API_VERSION_DEPRECATION_LINKS", "")
+    )
+    app.config["API_VERSION_WARNINGS"] = _parse_mapping(os.getenv("API_VERSION_WARNINGS", ""))
+    app.config["OPENAPI_OUTPUT_PATH"] = os.getenv(
+        "OPENAPI_OUTPUT_PATH", os.path.join(os.getcwd(), "docs", "openapi.yaml")
+    )
+
     _configure_logging(app)
     configure_structured_logging(app)
     configure_metrics(app)
@@ -521,6 +560,11 @@ def create_app() -> Flask:
 
     CORS(app, **_cors_configuration())
     limiter.init_app(app)
+    try:  # Ensure deterministic limits across test runs.
+        with app.app_context():
+            limiter.reset()
+    except Exception:  # pragma: no cover - defensive; reset may not exist on older versions
+        app.logger.debug("Rate limiter reset failed", exc_info=True)
     configure_api_keys(app)
     configure_request_signatures(app)
     _configure_ip_filters(app)
@@ -547,14 +591,48 @@ def create_app() -> Flask:
         pipeline = build_pipeline(rules, base_dir=os.getcwd())
         app.extensions["transformation_pipeline"] = pipeline
 
-    from .routes.proxy import proxy_bp
+    from .management.analytics import AnalyticsCollector
 
-    app.register_blueprint(proxy_bp)
+    analytics = AnalyticsCollector()
+    app.extensions["analytics"] = analytics
+
+    @app.before_request
+    def _start_request_timer():
+        g._request_started_at = time.perf_counter()
+
+    @app.after_request
+    def _record_request_metrics(response):
+        started = getattr(g, "_request_started_at", None)
+        duration = time.perf_counter() - started if started is not None else 0.0
+        version = getattr(g, "api_version", app.config.get("API_DEFAULT_VERSION"))
+        api_key_header = app.config.get("API_KEY_HEADER", "X-API-Key")
+        api_key = request.headers.get(api_key_header)
+        analytics.record_request(
+            endpoint=request.endpoint or request.path,
+            method=request.method,
+            status_code=response.status_code,
+            version=version,
+            duration=duration,
+            api_key=api_key,
+        )
+        return response
+
+    from .routes import register_versioned_proxy_blueprints
+
+    register_versioned_proxy_blueprints(app)
     _register_health_endpoints(app)
     configure_tracing(app)
     _configure_http_session(app)
     _configure_cache(app)
     _configure_compression(app)
+
+    from .utils.openapi import generate_openapi_document
+    from .routes.docs import create_docs_blueprint
+    from .middleware.deprecation import register_deprecation_middleware
+
+    generate_openapi_document(app)
+    app.register_blueprint(create_docs_blueprint())
+    register_deprecation_middleware(app)
 
     @app.errorhandler(429)
     def ratelimit_handler(_error):

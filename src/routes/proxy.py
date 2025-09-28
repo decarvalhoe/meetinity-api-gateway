@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Callable, Dict, Iterable, Sequence, Tuple
 
 import requests
 import time
@@ -28,8 +29,120 @@ from ..services.registry import ServiceInstance, ServiceRegistry
 from ..utils.responses import error_response
 from ..performance.cache import Cache, SingleFlight
 
-proxy_bp = Blueprint("proxy", __name__)
 tracer = trace.get_tracer(__name__)
+
+
+@dataclass(frozen=True)
+class ProxyRouteDefinition:
+    """Metadata describing a proxied endpoint."""
+
+    name: str
+    gateway_path: str
+    upstream_prefix: str
+    methods: tuple[str, ...]
+    requires_jwt: bool = False
+    rate_limit_config: str | None = None
+    summary: str = ""
+    description: str = ""
+    tags: tuple[str, ...] = ("Gateway",)
+
+
+PROXY_ROUTE_DEFINITIONS: tuple[ProxyRouteDefinition, ...] = (
+    ProxyRouteDefinition(
+        name="auth",
+        gateway_path="/api/auth",
+        upstream_prefix="auth",
+        methods=("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"),
+        rate_limit_config="RATE_LIMIT_AUTH",
+        summary="Authentication proxy",
+        description="Forward authentication requests to the upstream user service.",
+        tags=("Authentication",),
+    ),
+    ProxyRouteDefinition(
+        name="users",
+        gateway_path="/api/users",
+        upstream_prefix="users",
+        methods=("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"),
+        requires_jwt=True,
+        summary="User management proxy",
+        description="Proxy user management operations requiring JWT authentication.",
+        tags=("Users",),
+    ),
+    ProxyRouteDefinition(
+        name="profile",
+        gateway_path="/api/profile",
+        upstream_prefix="profile",
+        methods=("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"),
+        requires_jwt=True,
+        summary="Profile proxy",
+        description="Expose profile operations for authenticated users.",
+        tags=("Users",),
+    ),
+)
+
+
+def _build_proxy_view(upstream_prefix: str) -> Callable[[str], Response]:
+    normalized_prefix = upstream_prefix.strip("/")
+
+    def _view(subpath: str = "") -> Response:
+        target = normalized_prefix
+        if subpath:
+            target = f"{normalized_prefix}/{subpath}" if normalized_prefix else subpath
+        return _forward(target)
+
+    return _view
+
+
+def _rate_limit_callable(config_key: str) -> Callable[[], str]:
+    def _value() -> str:
+        if current_app.config.get("TESTING"):
+            return "10000/minute"
+        return current_app.config.get(config_key, "10/minute")
+
+    return _value
+
+
+def create_proxy_blueprint(version: str | None, default_version: str) -> Blueprint:
+    """Create a proxy blueprint bound to a specific API version."""
+
+    blueprint_name = f"proxy_{version or 'default'}"
+    url_prefix = f"/{version}" if version else ""
+    explicit_version = version is not None
+    blueprint = Blueprint(blueprint_name, __name__, url_prefix=url_prefix)
+
+    @blueprint.before_request
+    def _track_version_context() -> None:
+        g.api_version = version or default_version
+        g.api_version_explicit = explicit_version
+
+    for definition in PROXY_ROUTE_DEFINITIONS:
+        view = _build_proxy_view(definition.upstream_prefix)
+        view.__name__ = f"proxy_{definition.name}_{version or 'default'}"
+        view.__doc__ = definition.description or view.__doc__
+        if definition.requires_jwt:
+            view = require_jwt(view)
+        if definition.rate_limit_config:
+            config_key = definition.rate_limit_config
+            limit_decorator = limiter.limit(
+                _rate_limit_callable(config_key)
+            )
+            view = limit_decorator(view)
+
+        blueprint.add_url_rule(
+            rule=definition.gateway_path,
+            defaults={"subpath": ""},
+            view_func=view,
+            methods=list(definition.methods),
+            endpoint=f"{definition.name}_root",
+        )
+        blueprint.add_url_rule(
+            rule=f"{definition.gateway_path}/<path:subpath>",
+            view_func=view,
+            methods=list(definition.methods),
+            endpoint=f"{definition.name}_resource",
+        )
+
+    return blueprint
 
 
 def _get_http_session() -> requests.Session:
@@ -408,76 +521,6 @@ def _extract_set_cookie_headers(resp: requests.Response):
     return set_cookie_values
 
 
-@proxy_bp.route(
-    "/api/auth",
-    defaults={"path": ""},
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-)
-@proxy_bp.route(
-    "/api/auth/<path:path>",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-)
-@limiter.limit(lambda: current_app.config.get("RATE_LIMIT_AUTH", "10/minute"))
-def proxy_auth(path):
-    """Proxy authentication requests to the user service.
-    
-    This endpoint forwards authentication-related requests to the user service
-    with rate limiting applied to prevent abuse.
-    
-    Args:
-        path (str): The authentication path to forward.
-        
-    Returns:
-        Response: The response from the user service.
-    """
-    return _forward(f"auth/{path}" if path else "auth")
+__all__ = ["create_proxy_blueprint", "PROXY_ROUTE_DEFINITIONS"]
 
 
-@proxy_bp.route(
-    "/api/users",
-    defaults={"path": ""},
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-)
-@proxy_bp.route(
-    "/api/users/<path:path>",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-)
-@require_jwt
-def proxy_users(path):
-    """Proxy user management requests to the user service.
-    
-    This endpoint forwards user-related requests to the user service
-    with JWT authentication required.
-    
-    Args:
-        path (str): The user management path to forward.
-        
-    Returns:
-        Response: The response from the user service.
-    """
-    return _forward(f"users/{path}" if path else "users")
-
-
-@proxy_bp.route(
-    "/api/profile",
-    defaults={"path": ""},
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-)
-@proxy_bp.route(
-    "/api/profile/<path:path>",
-    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-)
-@require_jwt
-def proxy_profile(path):
-    """Proxy profile management requests to the user service.
-    
-    This endpoint forwards profile-related requests to the user service
-    with JWT authentication required.
-    
-    Args:
-        path (str): The profile management path to forward.
-        
-    Returns:
-        Response: The response from the user service.
-    """
-    return _forward(f"profile/{path}" if path else "profile")
