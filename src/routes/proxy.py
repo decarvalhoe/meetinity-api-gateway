@@ -8,6 +8,12 @@ import requests
 from flask import Blueprint, Response, current_app, g, request
 
 from ..app import limiter
+from ..transformations import (
+    OpenAPIValidationError,
+    RequestMessage,
+    ResponseMessage,
+    TransformationError,
+)
 from ..middleware.resilience import (
     ResilienceMiddleware,
     ServiceUnavailableError,
@@ -27,6 +33,35 @@ def _forward(path: str) -> Response:
     headers = _prepare_headers()
     data = request.get_data(cache=False)
     params = list(request.args.items(multi=True))
+
+    pipeline = current_app.extensions.get("transformation_pipeline")
+    request_message: RequestMessage | None = None
+
+    if pipeline:
+        request_message = RequestMessage(
+            method=request.method,
+            gateway_path=request.path,
+            upstream_path=path,
+            headers=dict(headers),
+            query_params=tuple(params),
+            body=data,
+            content_type=request.headers.get("Content-Type"),
+            host_url=request.host_url,
+        )
+        try:
+            request_message = pipeline.apply_request(request_message)
+        except OpenAPIValidationError as exc:
+            current_app.logger.warning("OpenAPI request validation failed: %s", exc)
+            return error_response(400, "Invalid request payload")
+        except TransformationError as exc:
+            current_app.logger.warning("Request transformation failed: %s", exc)
+            return error_response(400, "Request transformation error")
+
+        headers = dict(request_message.headers)
+        data = request_message.body
+        params = list(request_message.query_params)
+        upstream_path = request_message.upstream_path or ""
+        path = upstream_path.lstrip("/")
 
     timeout = (
         current_app.config.get("PROXY_TIMEOUT_CONNECT", 2.0),
@@ -77,14 +112,33 @@ def _forward(path: str) -> Response:
         except UpstreamRequestError:
             return error_response(502, "Bad Gateway")
 
-    response_headers = _filter_response_headers(upstream_response.headers.items())
+    response_message = ResponseMessage(
+        status_code=upstream_response.status_code,
+        headers=tuple(upstream_response.headers.items()),
+        body=upstream_response.content,
+        content_type=upstream_response.headers.get("Content-Type"),
+    )
+
+    if pipeline and request_message:
+        try:
+            response_message = pipeline.apply_response(
+                response_message, request_message=request_message
+            )
+        except OpenAPIValidationError as exc:
+            current_app.logger.warning("OpenAPI response validation failed: %s", exc)
+            return error_response(502, "Upstream response validation error")
+        except TransformationError as exc:
+            current_app.logger.warning("Response transformation failed: %s", exc)
+            return error_response(502, "Response transformation error")
+
+    response_headers = _filter_response_headers(response_message.headers)
     set_cookie_headers = _extract_set_cookie_headers(upstream_response)
     if set_cookie_headers:
         response_headers.extend(("Set-Cookie", value) for value in set_cookie_headers)
 
     return Response(
-        upstream_response.content,
-        upstream_response.status_code,
+        response_message.body,
+        response_message.status_code,
         response_headers,
     )
 
