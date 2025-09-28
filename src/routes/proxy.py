@@ -29,7 +29,7 @@ def _forward(path):
             method=request.method,
             url=url,
             headers=headers,
-            params=request.args,
+            params=list(request.args.items(multi=True)),
             data=request.get_data(),
             timeout=5,
         )

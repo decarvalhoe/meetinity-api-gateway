@@ -88,6 +88,27 @@ def test_auth_proxy_failure(client, monkeypatch):
     assert response.status_code == 502
 
 
+def test_proxy_preserves_duplicate_query_params(client, monkeypatch):
+    captured = {}
+
+    def fake_request(*args, **kwargs):
+        captured["params"] = kwargs.get("params")
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+        return mock_resp
+
+    monkeypatch.setattr(
+        "src.routes.proxy.requests.request", fake_request
+    )
+
+    response = client.get("/api/auth/tokens?tag=a&tag=b")
+
+    assert response.status_code == 200
+    assert captured["params"] == [("tag", "a"), ("tag", "b")]
+
+
 def test_cors_allows_any_origin_when_env_absent(monkeypatch):
     app = _create_app_without_cors_origins(monkeypatch)
     origin = "https://example.com"
