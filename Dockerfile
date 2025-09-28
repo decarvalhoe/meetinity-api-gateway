@@ -1,71 +1,60 @@
-# Multi-stage build for Meetinity API Gateway
-# Stage 1: Build dependencies
-FROM python:3.11-slim as builder
+# syntax=docker/dockerfile:1.4
 
-# Set build arguments
-ARG DEBIAN_FRONTEND=noninteractive
+#############################
+# Builder image
+#############################
+FROM python:3.11-slim AS builder
 
-# Install system dependencies for building
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    gcc \
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
+WORKDIR /app
+COPY requirements.txt ./
+
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy requirements first for better layer caching
-COPY requirements.txt .
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+#############################
+# Runtime image
+#############################
+FROM python:3.11-slim AS runtime
 
-# Stage 2: Runtime
-FROM python:3.11-slim as runtime
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONPATH=/app
 
-# Set build arguments
-ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Create non-root user
-RUN groupadd -r meetinity && useradd -r -g meetinity -s /bin/bash meetinity
-
-# Copy virtual environment from builder stage
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Set working directory
 WORKDIR /app
+COPY --from=builder /opt/venv /opt/venv
+COPY . .
 
-# Copy application code
-COPY --chown=meetinity:meetinity . .
+RUN addgroup --system meetinity \
+    && adduser --system --ingroup meetinity --home /app meetinity \
+    && chown -R meetinity:meetinity /app
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/logs && \
-    chown -R meetinity:meetinity /app
-
-# Switch to non-root user
 USER meetinity
 
-# Expose port
 EXPOSE 8080
 
-# Health check
+ENV GUNICORN_BIND=0.0.0.0:8080 \
+    GUNICORN_WORKERS=4 \
+    GUNICORN_THREADS=1 \
+    GUNICORN_TIMEOUT=120 \
+    GUNICORN_GRACEFUL_TIMEOUT=30 \
+    GUNICORN_MAX_REQUESTS=0
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Set environment variables
-ENV PYTHONPATH=/app \
-    PYTHONUNBUFFERED=1 \
-    FLASK_APP=src.app:create_app \
-    APP_PORT=8080
-
-# Run the application
-CMD ["python", "-m", "gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--timeout", "120", "src.app:create_app()"]
+CMD ["sh", "-c", "exec gunicorn --bind ${GUNICORN_BIND:-0.0.0.0:8080} --workers ${GUNICORN_WORKERS:-4} --threads ${GUNICORN_THREADS:-1} --timeout ${GUNICORN_TIMEOUT:-120} --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} --max-requests ${GUNICORN_MAX_REQUESTS:-0} src.main:app"]

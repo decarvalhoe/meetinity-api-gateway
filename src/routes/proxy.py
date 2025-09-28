@@ -243,6 +243,22 @@ def _forward(path: str) -> Response:
         service_name = current_app.config.get("USER_SERVICE_NAME", "user-service")
         strategy_name = current_app.config.get("LOAD_BALANCER_STRATEGY", "round_robin")
         session = _get_http_session()
+        cache: Cache | None = current_app.extensions.get("response_cache")
+        coalescer: SingleFlight | None = current_app.extensions.get("request_coalescer")
+        vary_headers: Sequence[str] = current_app.config.get("CACHE_VARY_HEADERS", ())
+        streaming_enabled = bool(
+            current_app.config.get("PROXY_STREAM_UPSTREAM", True) and pipeline is None
+        )
+        stream_chunk_size = int(current_app.config.get("PROXY_STREAM_CHUNK_SIZE", 65536))
+        if (
+            streaming_enabled
+            and request.method.upper() == "GET"
+            and (cache is not None or coalescer is not None)
+        ):
+            current_app.logger.debug(
+                "Streaming disabled for %s due to cache/coalescer policy", request.path
+            )
+            streaming_enabled = False
 
         def perform_request(instance: ServiceInstance) -> requests.Response:
             base_url = instance.url.rstrip("/")
@@ -267,6 +283,7 @@ def _forward(path: str) -> Response:
                         params=params,
                         data=data,
                         timeout=timeout,
+                        stream=streaming_enabled,
                     )
                 except requests.RequestException as exc:
                     duration = time.perf_counter() - start
@@ -287,9 +304,21 @@ def _forward(path: str) -> Response:
 
                 duration = time.perf_counter() - start
                 upstream_span.set_attribute("http.status_code", response.status_code)
-                upstream_span.set_attribute(
-                    "http.response_content_length", len(response.content or b"")
-                )
+                if streaming_enabled:
+                    content_length_header = response.headers.get("Content-Length")
+                    if content_length_header is not None:
+                        try:
+                            upstream_span.set_attribute(
+                                "http.response_content_length", int(content_length_header)
+                            )
+                        except (TypeError, ValueError):
+                            upstream_span.set_attribute(
+                                "http.response_content_length", content_length_header
+                            )
+                else:
+                    upstream_span.set_attribute(
+                        "http.response_content_length", len(response.content or b"")
+                    )
                 upstream_span.set_attribute("http.response_time_ms", duration * 1000.0)
                 if metrics:
                     metrics.observe_upstream_latency(
@@ -299,27 +328,29 @@ def _forward(path: str) -> Response:
                     )
                 return response
 
+        def _call_upstream() -> requests.Response:
+            if registry and resilience:
+                return resilience.execute(
+                    registry=registry,
+                    service_name=service_name,
+                    strategy_name=strategy_name,
+                    request_func=perform_request,
+                )
+            base_url = current_app.config.get("USER_SERVICE_URL", "").rstrip("/")
+            if not base_url:
+                span.set_status(
+                    Status(
+                        status_code=StatusCode.ERROR,
+                        description="upstream_not_configured",
+                    )
+                )
+                raise ServiceUnavailableError("Upstream not configured")
+            fallback_instance = ServiceInstance(service_name=service_name, url=base_url)
+            return perform_request(fallback_instance)
+
         def _execute_upstream() -> ResponseMessage:
             try:
-                if registry and resilience:
-                    upstream_response = resilience.execute(
-                        registry=registry,
-                        service_name=service_name,
-                        strategy_name=strategy_name,
-                        request_func=perform_request,
-                    )
-                else:
-                    base_url = current_app.config.get("USER_SERVICE_URL", "").rstrip("/")
-                    if not base_url:
-                        span.set_status(
-                            Status(
-                                status_code=StatusCode.ERROR,
-                                description="upstream_not_configured",
-                            )
-                        )
-                        raise ServiceUnavailableError("Upstream not configured")
-                    fallback_instance = ServiceInstance(service_name=service_name, url=base_url)
-                    upstream_response = perform_request(fallback_instance)
+                upstream_response = _call_upstream()
             except ServiceUnavailableError:
                 raise
             except UpstreamServiceError:
@@ -373,12 +404,68 @@ def _forward(path: str) -> Response:
             setattr(final_message, "_cacheable", not bool(set_cookie_headers))
             return final_message
 
-        cache: Cache | None = current_app.extensions.get("response_cache")
-        coalescer: SingleFlight | None = current_app.extensions.get("request_coalescer")
-        vary_headers: Sequence[str] = current_app.config.get("CACHE_VARY_HEADERS", ())
         cache_key = None
         cache_hit = False
         response_message: ResponseMessage | None = None
+
+        if streaming_enabled:
+            try:
+                upstream_response = _call_upstream()
+            except ServiceUnavailableError as exc:
+                span.record_exception(exc)
+                span.set_status(
+                    Status(status_code=StatusCode.ERROR, description="service_unavailable")
+                )
+                return error_response(503, "Service Unavailable")
+            except UpstreamServiceError as exc:
+                span.record_exception(exc)
+                span.set_status(
+                    Status(status_code=StatusCode.ERROR, description="upstream_service_error")
+                )
+                return error_response(502, "Bad Gateway")
+            except UpstreamRequestError as exc:
+                span.record_exception(exc)
+                span.set_status(
+                    Status(status_code=StatusCode.ERROR, description="upstream_request_error")
+                )
+                return error_response(502, "Bad Gateway")
+
+            response_headers = _filter_response_headers(upstream_response.headers.items())
+            set_cookie_headers = _extract_set_cookie_headers(upstream_response)
+            if set_cookie_headers:
+                response_headers.extend(("Set-Cookie", value) for value in set_cookie_headers)
+
+            def _generate() -> Iterable[bytes]:
+                try:
+                    for chunk in upstream_response.iter_content(chunk_size=stream_chunk_size):
+                        if chunk:
+                            yield chunk
+                finally:
+                    upstream_response.close()
+
+            span.set_attribute("http.status_code", upstream_response.status_code)
+            content_length_header = upstream_response.headers.get("Content-Length")
+            if content_length_header is not None:
+                try:
+                    span.set_attribute(
+                        "http.response_content_length", int(content_length_header)
+                    )
+                except (TypeError, ValueError):
+                    span.set_attribute(
+                        "http.response_content_length", content_length_header
+                    )
+            span.set_attribute("cache.hit", False)
+            if upstream_response.status_code >= 500:
+                span.set_status(Status(StatusCode.ERROR))
+            else:
+                span.set_status(Status(StatusCode.OK))
+
+            return Response(
+                _generate(),
+                upstream_response.status_code,
+                list(response_headers),
+                direct_passthrough=True,
+            )
 
         def _cache_predicate(message: ResponseMessage) -> bool:
             return bool(getattr(message, "_cacheable", True))

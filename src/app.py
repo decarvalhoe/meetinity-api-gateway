@@ -4,10 +4,10 @@ import io
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, Tuple
 
 import requests
-from dotenv import load_dotenv
 from flask import Flask, current_app, g, jsonify, request
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -33,6 +33,12 @@ from .security.oauth import DiscoveryError, OIDCProvider
 from .security.signatures import configure_request_signatures
 from .services.registry import create_service_registry
 from .transformations import build_pipeline, load_transformation_rules
+from .utils.config import (
+    EnvironmentSettings,
+    load_environment_settings,
+    log_configuration_snapshot,
+)
+from .utils.lifecycle import install_signal_handlers, register_shutdown_task
 from .utils.responses import error_response
 from .performance.cache import Cache, InMemoryCacheBackend, RedisCacheBackend, SingleFlight
 
@@ -97,19 +103,25 @@ def _configure_ip_filters(app: Flask) -> None:
         return None
 
 
-def _configure_http_session(app: Flask) -> None:
+def _configure_http_session(app: Flask) -> requests.Session:
     """Initialise a pooled HTTP session for upstream calls."""
 
     pool_connections = int(app.config.get("PROXY_POOL_CONNECTIONS", 10))
     pool_maxsize = int(app.config.get("PROXY_POOL_MAXSIZE", 10))
+    pool_block = bool(app.config.get("PROXY_POOL_BLOCK", True))
     session = requests.Session()
-    adapter = HTTPAdapter(pool_connections=pool_connections, pool_maxsize=pool_maxsize)
+    adapter = HTTPAdapter(
+        pool_connections=pool_connections,
+        pool_maxsize=pool_maxsize,
+        pool_block=pool_block,
+    )
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     if app.config.get("PROXY_SESSION_KEEPALIVE", True):
         session.headers.setdefault("Connection", "keep-alive")
     app.extensions["http_session"] = session
     app.extensions["request_coalescer"] = SingleFlight()
+    return session
 
 
 def _configure_cache(app: Flask) -> None:
@@ -405,26 +417,24 @@ def _configure_logging(app: Flask) -> None:
     helper simply applies the configured log level.
     """
 
-    level = os.getenv("LOG_LEVEL", "INFO").upper()
+    level = str(app.config.get("LOG_LEVEL_NAME", "INFO")).upper()
     try:
         logging_level = getattr(logging, level)
     except AttributeError:
         logging_level = logging.INFO
     app.config["LOG_LEVEL"] = logging_level
     app.logger.setLevel(logging_level)
-    aggregators_raw = os.getenv("LOG_AGGREGATORS", "")
+    aggregators_raw = str(app.config.get("LOG_AGGREGATORS_RAW", ""))
     app.config["LOG_AGGREGATORS"] = tuple(_split_env_list(aggregators_raw))
-    app.config["LOGGER_NAME"] = os.getenv("LOGGER_NAME", "meetinity.api_gateway")
+    logger_name = app.config.get("LOGGER_NAME", "meetinity.api_gateway")
+    app.config["LOGGER_NAME"] = logger_name
+    app.logger.name = str(logger_name)
 
 
-def _cors_configuration() -> dict[str, Any]:
+def _cors_configuration(app: Flask) -> dict[str, Any]:
     """Build the CORS configuration for the application."""
 
-    origins_env = os.getenv("CORS_ORIGINS")
-    origins = []
-    if origins_env:
-        origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
-
+    origins = list(app.config.get("CORS_ORIGINS", ()))
     cors_origins: Any = origins if origins else "*"
     return {
         "origins": cors_origins,
@@ -438,57 +448,68 @@ def _cors_configuration() -> dict[str, Any]:
 def create_app() -> Flask:
     """Create and configure the Flask application."""
 
-    load_dotenv()
+    project_root = Path(__file__).resolve().parent.parent
+    settings: EnvironmentSettings = load_environment_settings(project_root=project_root)
     app = Flask(__name__)
+    install_signal_handlers(app)
 
-    api_keys_raw = os.getenv("API_KEYS", "")
-    signing_secrets_raw = os.getenv("SIGNING_SECRETS", "")
-    signature_headers_raw = os.getenv("SIGNATURE_HEADERS", "")
-    signature_exempt_raw = os.getenv("SIGNATURE_EXEMPT_PATHS", "/health")
-    api_key_exempt_raw = os.getenv("API_KEY_EXEMPT_PATHS", "/health")
-    ip_whitelist_raw = os.getenv("IP_WHITELIST", "")
-    ip_blacklist_raw = os.getenv("IP_BLACKLIST", "")
-    oauth_cache_ttl = int(os.getenv("OAUTH_CACHE_TTL", "300"))
+    def _get_env(key: str, default: str | None = None) -> str | None:
+        value = settings.get(key)
+        if value is None:
+            return default
+        return value
 
-    app.config["USER_SERVICE_URL"] = os.getenv("USER_SERVICE_URL", "")
-    app.config["USER_SERVICE_NAME"] = os.getenv("USER_SERVICE_NAME", "user-service")
-    app.config["USER_SERVICE_STATIC_INSTANCES"] = os.getenv(
+    api_keys_raw = _get_env("API_KEYS", "") or ""
+    signing_secrets_raw = _get_env("SIGNING_SECRETS", "") or ""
+    signature_headers_raw = _get_env("SIGNATURE_HEADERS", "") or ""
+    signature_exempt_raw = _get_env("SIGNATURE_EXEMPT_PATHS", "/health") or "/health"
+    api_key_exempt_raw = _get_env("API_KEY_EXEMPT_PATHS", "/health") or "/health"
+    ip_whitelist_raw = _get_env("IP_WHITELIST", "") or ""
+    ip_blacklist_raw = _get_env("IP_BLACKLIST", "") or ""
+    oauth_cache_ttl = int(_get_env("OAUTH_CACHE_TTL", "300") or "300")
+
+    app.config["APP_ENV"] = settings.name
+    app.config["CONFIG_ENV_FILES"] = settings.loaded_files
+    app.config["HIERARCHICAL_CONFIG"] = settings.hierarchical
+    app.config["USER_SERVICE_URL"] = _get_env("USER_SERVICE_URL", "") or ""
+    app.config["USER_SERVICE_NAME"] = _get_env("USER_SERVICE_NAME", "user-service") or "user-service"
+    app.config["USER_SERVICE_STATIC_INSTANCES"] = _get_env(
         "USER_SERVICE_STATIC_INSTANCES", ""
-    )
-    app.config["SERVICE_DISCOVERY_BACKEND"] = os.getenv(
+    ) or ""
+    app.config["SERVICE_DISCOVERY_BACKEND"] = _get_env(
         "SERVICE_DISCOVERY_BACKEND", "static"
-    )
+    ) or "static"
     app.config["SERVICE_DISCOVERY_REFRESH_INTERVAL"] = float(
-        os.getenv("SERVICE_DISCOVERY_REFRESH_INTERVAL", "30")
+        _get_env("SERVICE_DISCOVERY_REFRESH_INTERVAL", "30") or "30"
     )
-    app.config["LOAD_BALANCER_STRATEGY"] = os.getenv(
+    app.config["LOAD_BALANCER_STRATEGY"] = _get_env(
         "LOAD_BALANCER_STRATEGY", "round_robin"
-    )
-    app.config["JWT_SECRET"] = os.getenv("JWT_SECRET", "")
-    app.config["RATE_LIMIT_AUTH"] = os.getenv("RATE_LIMIT_AUTH", "10/minute")
+    ) or "round_robin"
+    app.config["JWT_SECRET"] = _get_env("JWT_SECRET", "") or ""
+    app.config["RATE_LIMIT_AUTH"] = _get_env("RATE_LIMIT_AUTH", "10/minute") or "10/minute"
     app.config["API_KEYS"] = api_keys_raw
-    app.config["API_KEY_HEADER"] = os.getenv("API_KEY_HEADER", "X-API-Key")
-    app.config["API_KEY_SALT"] = os.getenv("API_KEY_SALT", "")
-    app.config["API_KEY_HASH_ALGORITHM"] = os.getenv(
+    app.config["API_KEY_HEADER"] = _get_env("API_KEY_HEADER", "X-API-Key") or "X-API-Key"
+    app.config["API_KEY_SALT"] = _get_env("API_KEY_SALT", "") or ""
+    app.config["API_KEY_HASH_ALGORITHM"] = _get_env(
         "API_KEY_HASH_ALGORITHM", "sha256"
-    )
+    ) or "sha256"
     app.config["API_KEY_REQUIRED"] = _parse_bool(
-        os.getenv("API_KEY_REQUIRED"), bool(api_keys_raw)
+        _get_env("API_KEY_REQUIRED"), bool(api_keys_raw)
     )
     app.config["API_KEY_EXEMPT_PATHS"] = tuple(_split_env_list(api_key_exempt_raw))
     app.config["SIGNING_SECRETS"] = signing_secrets_raw
     app.config["REQUEST_SIGNATURES_ENABLED"] = _parse_bool(
-        os.getenv("REQUEST_SIGNATURES_ENABLED"), bool(signing_secrets_raw)
+        _get_env("REQUEST_SIGNATURES_ENABLED"), bool(signing_secrets_raw)
     )
-    app.config["SIGNATURE_HEADER"] = os.getenv("SIGNATURE_HEADER", "X-Signature")
-    app.config["SIGNATURE_TIMESTAMP_HEADER"] = os.getenv(
+    app.config["SIGNATURE_HEADER"] = _get_env("SIGNATURE_HEADER", "X-Signature") or "X-Signature"
+    app.config["SIGNATURE_TIMESTAMP_HEADER"] = _get_env(
         "SIGNATURE_TIMESTAMP_HEADER", "X-Timestamp"
-    )
-    app.config["SIGNATURE_KEY_ID_HEADER"] = os.getenv(
+    ) or "X-Timestamp"
+    app.config["SIGNATURE_KEY_ID_HEADER"] = _get_env(
         "SIGNATURE_KEY_ID_HEADER", "X-Client-Id"
-    )
+    ) or "X-Client-Id"
     app.config["SIGNATURE_CLOCK_TOLERANCE"] = int(
-        os.getenv("SIGNATURE_CLOCK_TOLERANCE", "300")
+        _get_env("SIGNATURE_CLOCK_TOLERANCE", "300") or "300"
     )
     app.config["SIGNATURE_HEADERS"] = _split_env_list(signature_headers_raw)
     app.config["SIGNATURE_EXEMPT_PATHS"] = tuple(
@@ -496,61 +517,111 @@ def create_app() -> Flask:
     )
     app.config["IP_WHITELIST"] = set(_split_env_list(ip_whitelist_raw))
     app.config["IP_BLACKLIST"] = set(_split_env_list(ip_blacklist_raw))
-    app.config["OAUTH_PROVIDER_URL"] = os.getenv("OAUTH_PROVIDER_URL", "")
-    app.config["OAUTH_CLIENT_SECRET"] = os.getenv("OAUTH_CLIENT_SECRET", "")
-    app.config["OAUTH_AUDIENCE"] = os.getenv("OAUTH_AUDIENCE", "")
+    app.config["OAUTH_PROVIDER_URL"] = _get_env("OAUTH_PROVIDER_URL", "") or ""
+    app.config["OAUTH_CLIENT_SECRET"] = _get_env("OAUTH_CLIENT_SECRET", "") or ""
+    app.config["OAUTH_AUDIENCE"] = _get_env("OAUTH_AUDIENCE", "") or ""
     app.config["OAUTH_CACHE_TTL"] = oauth_cache_ttl
     # Performance tuning knobs for the proxy layer. See ``docs/operations/performance.md``
     # for operator guidance on sizing and trade-offs.
-    app.config["PROXY_TIMEOUT_CONNECT"] = float(os.getenv("PROXY_TIMEOUT_CONNECT", "2"))
-    app.config["PROXY_TIMEOUT_READ"] = float(os.getenv("PROXY_TIMEOUT_READ", "10"))
-    app.config["PROXY_POOL_CONNECTIONS"] = int(os.getenv("PROXY_POOL_CONNECTIONS", "10"))
-    app.config["PROXY_POOL_MAXSIZE"] = int(os.getenv("PROXY_POOL_MAXSIZE", "10"))
-    app.config["PROXY_SESSION_KEEPALIVE"] = _parse_bool(
-        os.getenv("PROXY_SESSION_KEEPALIVE"), True
+    app.config["PROXY_TIMEOUT_CONNECT"] = float(_get_env("PROXY_TIMEOUT_CONNECT", "2") or "2")
+    app.config["PROXY_TIMEOUT_READ"] = float(_get_env("PROXY_TIMEOUT_READ", "10") or "10")
+    app.config["PROXY_POOL_CONNECTIONS"] = int(
+        _get_env("PROXY_POOL_CONNECTIONS", "10") or "10"
     )
-    app.config["RESILIENCE_MAX_RETRIES"] = int(os.getenv("RESILIENCE_MAX_RETRIES", "2"))
+    app.config["PROXY_POOL_MAXSIZE"] = int(
+        _get_env("PROXY_POOL_MAXSIZE", "10") or "10"
+    )
+    app.config["PROXY_POOL_BLOCK"] = _parse_bool(_get_env("PROXY_POOL_BLOCK"), True)
+    app.config["PROXY_SESSION_KEEPALIVE"] = _parse_bool(
+        _get_env("PROXY_SESSION_KEEPALIVE"), True
+    )
+    app.config["PROXY_STREAM_UPSTREAM"] = _parse_bool(
+        _get_env("PROXY_STREAM_UPSTREAM"), True
+    )
+    app.config["PROXY_STREAM_CHUNK_SIZE"] = int(
+        _get_env("PROXY_STREAM_CHUNK_SIZE", "65536") or "65536"
+    )
+    app.config["RESILIENCE_MAX_RETRIES"] = int(_get_env("RESILIENCE_MAX_RETRIES", "2") or "2")
     app.config["RESILIENCE_BACKOFF_FACTOR"] = float(
-        os.getenv("RESILIENCE_BACKOFF_FACTOR", "0.5")
+        _get_env("RESILIENCE_BACKOFF_FACTOR", "0.5") or "0.5"
     )
     app.config["RESILIENCE_MAX_BACKOFF"] = float(
-        os.getenv("RESILIENCE_MAX_BACKOFF", "5")
+        _get_env("RESILIENCE_MAX_BACKOFF", "5") or "5"
     )
     app.config["CIRCUIT_BREAKER_FAILURE_THRESHOLD"] = int(
-        os.getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "3")
+        _get_env("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "3") or "3"
     )
     app.config["CIRCUIT_BREAKER_RESET_TIMEOUT"] = float(
-        os.getenv("CIRCUIT_BREAKER_RESET_TIMEOUT", "30")
+        _get_env("CIRCUIT_BREAKER_RESET_TIMEOUT", "30") or "30"
     )
-    app.config["CACHE_ENABLED"] = _parse_bool(os.getenv("CACHE_ENABLED"), True)
-    app.config["CACHE_BACKEND"] = os.getenv("CACHE_BACKEND", "memory")
-    app.config["CACHE_DEFAULT_TTL"] = float(os.getenv("CACHE_DEFAULT_TTL", "5"))
-    app.config["CACHE_REDIS_URL"] = os.getenv("CACHE_REDIS_URL", "")
-    app.config["CACHE_REDIS_NAMESPACE"] = os.getenv("CACHE_REDIS_NAMESPACE", "api-gateway")
+    app.config["CACHE_ENABLED"] = _parse_bool(_get_env("CACHE_ENABLED"), True)
+    app.config["CACHE_BACKEND"] = _get_env("CACHE_BACKEND", "memory") or "memory"
+    app.config["CACHE_DEFAULT_TTL"] = float(_get_env("CACHE_DEFAULT_TTL", "5") or "5")
+    app.config["CACHE_REDIS_URL"] = _get_env("CACHE_REDIS_URL", "") or ""
+    app.config["CACHE_REDIS_NAMESPACE"] = _get_env(
+        "CACHE_REDIS_NAMESPACE", "api-gateway"
+    ) or "api-gateway"
     app.config["CACHE_VARY_HEADERS"] = tuple(
-        _split_env_list(os.getenv("CACHE_VARY_HEADERS", "Authorization"))
+        _split_env_list(_get_env("CACHE_VARY_HEADERS", "Authorization") or "Authorization")
     )
     app.config["COMPRESSION_ENABLED"] = _parse_bool(
-        os.getenv("COMPRESSION_ENABLED"), True
+        _get_env("COMPRESSION_ENABLED"), True
     )
-    app.config["COMPRESSION_MIN_SIZE"] = int(os.getenv("COMPRESSION_MIN_SIZE", "512"))
-    app.config["COMPRESSION_GZIP_LEVEL"] = int(os.getenv("COMPRESSION_GZIP_LEVEL", "6"))
-    app.config["COMPRESSION_BR_QUALITY"] = int(os.getenv("COMPRESSION_BR_QUALITY", "5"))
+    app.config["COMPRESSION_MIN_SIZE"] = int(
+        _get_env("COMPRESSION_MIN_SIZE", "512") or "512"
+    )
+    app.config["COMPRESSION_GZIP_LEVEL"] = int(
+        _get_env("COMPRESSION_GZIP_LEVEL", "6") or "6"
+    )
+    app.config["COMPRESSION_BR_QUALITY"] = int(
+        _get_env("COMPRESSION_BR_QUALITY", "5") or "5"
+    )
 
-    configured_versions = _normalize_versions(os.getenv("API_VERSIONS"), ("v1", "v2"))
-    default_version = os.getenv("API_DEFAULT_VERSION") or (configured_versions[0] if configured_versions else "v1")
+    configured_versions = _normalize_versions(_get_env("API_VERSIONS"), ("v1", "v2"))
+    default_version = _get_env("API_DEFAULT_VERSION") or (
+        configured_versions[0] if configured_versions else "v1"
+    )
     if default_version not in configured_versions:
         configured_versions = (default_version, *[v for v in configured_versions if v != default_version])
     app.config["API_VERSIONS"] = configured_versions
     app.config["API_DEFAULT_VERSION"] = default_version
-    app.config["API_VERSION_DEPRECATIONS"] = _parse_mapping(os.getenv("API_VERSION_DEPRECATIONS", ""))
-    app.config["API_VERSION_SUNSETS"] = _parse_mapping(os.getenv("API_VERSION_SUNSETS", ""))
-    app.config["API_VERSION_DEPRECATION_LINKS"] = _parse_mapping(
-        os.getenv("API_VERSION_DEPRECATION_LINKS", "")
+    app.config["API_VERSION_DEPRECATIONS"] = _parse_mapping(
+        _get_env("API_VERSION_DEPRECATIONS", "") or ""
     )
-    app.config["API_VERSION_WARNINGS"] = _parse_mapping(os.getenv("API_VERSION_WARNINGS", ""))
-    app.config["OPENAPI_OUTPUT_PATH"] = os.getenv(
+    app.config["API_VERSION_SUNSETS"] = _parse_mapping(
+        _get_env("API_VERSION_SUNSETS", "") or ""
+    )
+    app.config["API_VERSION_DEPRECATION_LINKS"] = _parse_mapping(
+        _get_env("API_VERSION_DEPRECATION_LINKS", "") or ""
+    )
+    app.config["API_VERSION_WARNINGS"] = _parse_mapping(
+        _get_env("API_VERSION_WARNINGS", "") or ""
+    )
+    app.config["OPENAPI_OUTPUT_PATH"] = _get_env(
         "OPENAPI_OUTPUT_PATH", os.path.join(os.getcwd(), "docs", "openapi.yaml")
+    ) or os.path.join(os.getcwd(), "docs", "openapi.yaml")
+
+    app.config["LOG_LEVEL_NAME"] = (_get_env("LOG_LEVEL", "INFO") or "INFO").upper()
+    app.config["LOG_AGGREGATORS_RAW"] = _get_env("LOG_AGGREGATORS", "") or ""
+    app.config["LOGGER_NAME"] = _get_env("LOGGER_NAME", "meetinity.api_gateway") or "meetinity.api_gateway"
+    app.config["CORS_ORIGINS"] = tuple(
+        _split_env_list(_get_env("CORS_ORIGINS", "") or "")
+    )
+
+    wsgi_workers_raw = _get_env("WSGI_WORKERS") or _get_env("GUNICORN_WORKERS") or "4"
+    app.config["WSGI_WORKERS"] = int(wsgi_workers_raw)
+    wsgi_threads_raw = _get_env("WSGI_THREADS") or _get_env("GUNICORN_THREADS") or "1"
+    app.config["WSGI_THREADS"] = int(wsgi_threads_raw)
+    graceful_timeout_raw = _get_env("WSGI_GRACEFUL_TIMEOUT") or _get_env(
+        "GUNICORN_GRACEFUL_TIMEOUT"
+    ) or "30"
+    app.config["WSGI_GRACEFUL_TIMEOUT"] = int(graceful_timeout_raw)
+    max_requests_raw = _get_env("WSGI_MAX_REQUESTS") or _get_env(
+        "GUNICORN_MAX_REQUESTS"
+    ) or "0"
+    app.config["WSGI_MAX_REQUESTS"] = int(max_requests_raw)
+    app.config["APP_PORT"] = int(
+        _get_env("APP_PORT") or _get_env("PORT") or "5000"
     )
 
     _configure_logging(app)
@@ -558,7 +629,37 @@ def create_app() -> Flask:
     configure_metrics(app)
     setup_request_logging(app)
 
-    CORS(app, **_cors_configuration())
+    log_configuration_snapshot(
+        logger=app.logger,
+        settings=settings,
+        config=app.config,
+        keys_of_interest=[
+            "APP_ENV",
+            "CONFIG_ENV_FILES",
+            "USER_SERVICE_URL",
+            "SERVICE_DISCOVERY_BACKEND",
+            "SERVICE_DISCOVERY_REFRESH_INTERVAL",
+            "LOAD_BALANCER_STRATEGY",
+            "PROXY_TIMEOUT_CONNECT",
+            "PROXY_TIMEOUT_READ",
+            "PROXY_POOL_CONNECTIONS",
+            "PROXY_POOL_MAXSIZE",
+            "PROXY_POOL_BLOCK",
+            "PROXY_STREAM_UPSTREAM",
+            "PROXY_STREAM_CHUNK_SIZE",
+            "CACHE_ENABLED",
+            "CACHE_BACKEND",
+            "CACHE_DEFAULT_TTL",
+            "PROXY_SESSION_KEEPALIVE",
+            "WSGI_WORKERS",
+            "WSGI_THREADS",
+            "WSGI_GRACEFUL_TIMEOUT",
+            "WSGI_MAX_REQUESTS",
+            "APP_PORT",
+        ],
+    )
+
+    CORS(app, **_cors_configuration(app))
     limiter.init_app(app)
     try:  # Ensure deterministic limits across test runs.
         with app.app_context():
@@ -583,7 +684,7 @@ def create_app() -> Flask:
         max_backoff=app.config["RESILIENCE_MAX_BACKOFF"],
     )
 
-    rules_source = os.getenv("TRANSFORMATION_RULES_PATH") or os.getenv(
+    rules_source = _get_env("TRANSFORMATION_RULES_PATH") or _get_env(
         "TRANSFORMATION_RULES"
     )
     if rules_source:
@@ -595,6 +696,16 @@ def create_app() -> Flask:
 
     analytics = AnalyticsCollector()
     app.extensions["analytics"] = analytics
+
+    def _flush_analytics() -> None:
+        try:
+            report = analytics.export_report("json")
+        except Exception:  # pragma: no cover - defensive logging
+            app.logger.exception("Failed to export analytics during shutdown")
+            return
+        app.logger.info("Analytics snapshot on shutdown", extra={"analytics": report})
+
+    register_shutdown_task("analytics", _flush_analytics)
 
     @app.before_request
     def _start_request_timer():
@@ -622,7 +733,8 @@ def create_app() -> Flask:
     register_versioned_proxy_blueprints(app)
     _register_health_endpoints(app)
     configure_tracing(app)
-    _configure_http_session(app)
+    session = _configure_http_session(app)
+    register_shutdown_task("http_session", session.close)
     _configure_cache(app)
     _configure_compression(app)
 
@@ -660,4 +772,5 @@ def create_app() -> Flask:
 
 if __name__ == "__main__":
     application = create_app()
-    application.run(port=int(os.getenv("APP_PORT", 5000)))
+    port = int(application.config.get("APP_PORT", 5000))
+    application.run(host="0.0.0.0", port=port)

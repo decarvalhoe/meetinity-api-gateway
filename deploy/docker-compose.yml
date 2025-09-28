@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    image: meetinity/api-gateway:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+      - ../.env.production
+    environment:
+      APP_ENV: production
+      GUNICORN_WORKERS: 4
+      GUNICORN_THREADS: 2
+      PROXY_POOL_CONNECTIONS: 100
+      PROXY_POOL_MAXSIZE: 200
+      PROXY_STREAM_UPSTREAM: "true"
+    ports:
+      - "8080:8080"
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        order: start-first
+      restart_policy:
+        condition: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

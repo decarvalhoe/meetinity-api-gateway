@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: meetinity-api-gateway-config
+  labels:
+    app: meetinity-api-gateway
+    component: gateway
+    managed-by: platform-team
+    version: v1
+  annotations:
+    kubernetes.io/description: Base configuration for the Meetinity API Gateway
+    gateway.meetinity.io/config-source: configmap
+    gateway.meetinity.io/environment: production
+data:
+  APP_ENV: "production"
+  PROXY__TIMEOUT__CONNECT: "2"
+  PROXY__TIMEOUT__READ: "10"
+  PROXY_POOL_CONNECTIONS: "100"
+  PROXY_POOL_MAXSIZE: "200"
+  PROXY_STREAM_UPSTREAM: "true"
+  CACHE_ENABLED: "true"
+  CACHE_DEFAULT_TTL: "5"
+  WSGI_WORKERS: "4"
+  WSGI_THREADS: "2"
+  WSGI_GRACEFUL_TIMEOUT: "30"
