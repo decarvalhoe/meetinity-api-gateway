@@ -9,3 +9,8 @@ pytest==7.4.0
 flake8==6.0.0
 openapi-core==0.19.2
 PyYAML==6.0.3
+prometheus-client==0.17.1
+opentelemetry-sdk==1.22.0
+opentelemetry-exporter-otlp==1.22.0
+opentelemetry-instrumentation-flask==0.43b0
+opentelemetry-instrumentation-requests==0.43b0

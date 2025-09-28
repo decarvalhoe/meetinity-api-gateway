@@ -1,7 +1,7 @@
 """Meetinity API Gateway application factory."""
 import logging
 import os
-from typing import Any
+from typing import Any, Callable, Dict, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -13,8 +13,13 @@ from werkzeug.exceptions import HTTPException
 
 from .middleware.logging import setup_request_logging
 from .middleware.resilience import ResilienceMiddleware
+from .observability import (
+    configure_metrics,
+    configure_structured_logging,
+    configure_tracing,
+)
 from .security.api_keys import configure_api_keys
-from .security.oauth import OIDCProvider
+from .security.oauth import DiscoveryError, OIDCProvider
 from .security.signatures import configure_request_signatures
 from .services.registry import create_service_registry
 from .transformations import build_pipeline, load_transformation_rules
@@ -59,6 +64,136 @@ def _configure_ip_filters(app: Flask) -> None:
         return None
 
 
+HealthResult = Tuple[str, Dict[str, Any], int]
+
+
+def _check_gateway_health(app: Flask) -> HealthResult:
+    return "up", {"logger": app.logger.name}, 200
+
+
+def _check_user_service_health(app: Flask) -> HealthResult:
+    url = app.config.get("USER_SERVICE_URL", "").rstrip("/")
+    if not url:
+        return "degraded", {"message": "USER_SERVICE_URL not configured"}, 200
+
+    target = f"{url}/health"
+    try:
+        response = requests.get(target, timeout=(2, 5))
+    except requests.RequestException as exc:
+        return "down", {"message": str(exc), "target": target}, 503
+
+    if response.status_code == 200:
+        return "up", {"target": target, "status_code": response.status_code}, 200
+
+    status = "degraded" if response.status_code < 500 else "down"
+    http_status = 200 if status == "degraded" else 503
+    return status, {"target": target, "status_code": response.status_code}, http_status
+
+
+def _check_service_registry_health(app: Flask) -> HealthResult:
+    registry = app.extensions.get("service_registry")
+    if not registry:
+        return "degraded", {"message": "Registry not initialised"}, 200
+
+    service_name = app.config.get("USER_SERVICE_NAME", "user-service")
+    try:
+        instances = registry.get_instances(service_name, force_refresh=True)
+    except Exception as exc:  # pragma: no cover - defensive
+        return "down", {"message": str(exc), "service": service_name}, 503
+
+    if not instances:
+        return "degraded", {"message": "No instances discovered", "service": service_name}, 200
+
+    return "up", {"instances": [inst.url for inst in instances], "service": service_name}, 200
+
+
+def _check_oidc_health(app: Flask) -> HealthResult:
+    provider = app.extensions.get("oidc_provider")
+    if not provider:
+        return "skipped", {"message": "OIDC not configured"}, 200
+
+    try:
+        metadata = provider.discover(force=True)
+    except DiscoveryError as exc:
+        return "down", {"message": str(exc)}, 503
+    except requests.RequestException as exc:  # pragma: no cover - network issues
+        return "down", {"message": str(exc)}, 503
+
+    return "up", {"issuer": metadata.issuer}, 200
+
+
+def _check_observability_health(app: Flask) -> HealthResult:
+    metrics_ready = "metrics" in app.extensions
+    tracing_ready = "tracer_provider" in app.extensions
+    missing = []
+    if not metrics_ready:
+        missing.append("metrics")
+    if not tracing_ready:
+        missing.append("tracing")
+
+    if missing:
+        return "degraded", {"missing": missing}, 200
+
+    return "up", {"logger": app.logger.name}, 200
+
+
+def _register_health_endpoints(app: Flask) -> None:
+    checks: Dict[str, Callable[[Flask], HealthResult]] = {
+        "gateway": _check_gateway_health,
+        "user-service": _check_user_service_health,
+        "service-registry": _check_service_registry_health,
+        "oidc": _check_oidc_health,
+        "observability": _check_observability_health,
+    }
+
+    def _execute(check_name: str) -> Tuple[str, Dict[str, Any], int]:
+        check = checks.get(check_name)
+        if not check:
+            return "unknown", {"message": "No such dependency"}, 404
+        return check(app)
+
+    @app.route("/health")
+    def health():
+        dependency_status: Dict[str, Dict[str, Any]] = {}
+        overall = "ok"
+        http_status = 200
+
+        for name in checks:
+            status, details, status_code = _execute(name)
+            dependency_status[name] = {"status": status, "details": details}
+            if status == "down":
+                overall = "error"
+                http_status = 503
+            elif status not in {"up", "skipped"} and overall == "ok":
+                overall = "degraded"
+            if status_code >= 500:
+                http_status = 503
+
+        payload = {
+            "service": "api-gateway",
+            "status": overall,
+            "dependencies": dependency_status,
+        }
+        payload["upstreams"] = {
+            "user_service": dependency_status.get("user-service", {}).get("status", "unknown")
+        }
+        return jsonify(payload), http_status
+
+    @app.route("/health/<service>")
+    def health_service(service: str):
+        status, details, http_status = _execute(service)
+        payload = {
+            "service": service,
+            "status": status,
+            "details": details,
+        }
+        if http_status == 404:
+            return jsonify(payload), http_status
+        if status == "down" and http_status < 500:
+            http_status = 503
+        return jsonify(payload), http_status
+
+
 def _configure_logging(app: Flask) -> None:
     """Configure the Flask application logger.
 
@@ -73,6 +208,9 @@ def _configure_logging(app: Flask) -> None:
         logging_level = logging.INFO
     app.config["LOG_LEVEL"] = logging_level
     app.logger.setLevel(logging_level)
+    aggregators_raw = os.getenv("LOG_AGGREGATORS", "")
+    app.config["LOG_AGGREGATORS"] = tuple(_split_env_list(aggregators_raw))
+    app.config["LOGGER_NAME"] = os.getenv("LOGGER_NAME", "meetinity.api_gateway")
 
 
 def _cors_configuration() -> dict[str, Any]:
@@ -175,6 +313,8 @@ def create_app() -> Flask:
     )
 
     _configure_logging(app)
+    configure_structured_logging(app)
+    configure_metrics(app)
     setup_request_logging(app)
 
     CORS(app, **_cors_configuration())
@@ -208,33 +348,8 @@ def create_app() -> Flask:
     from .routes.proxy import proxy_bp
 
     app.register_blueprint(proxy_bp)
-
-    @app.route("/health")
-    def health():
-        """Return the current health status for the API gateway and upstream."""
-
-        upstream_status = "down"
-        overall_status = "error"
-        http_status = 503
-
-        url = app.config["USER_SERVICE_URL"].rstrip("/")
-        if url:
-            try:
-                resp = requests.get(f"{url}/health", timeout=(2, 5))
-            except requests.RequestException:
-                resp = None
-            if resp and resp.status_code == 200:
-                upstream_status = "up"
-                overall_status = "ok"
-                http_status = 200
-
-        return jsonify(
-            {
-                "status": overall_status,
-                "service": "api-gateway",
-                "upstreams": {"user_service": upstream_status},
-            }
-        ), http_status
+    _register_health_endpoints(app)
+    configure_tracing(app)
 
     @app.errorhandler(429)
     def ratelimit_handler(_error):
