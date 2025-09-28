@@ -1,0 +1,2094 @@
+openapi: 3.0.3
+info:
+  title: Meetinity API Gateway
+  version: v1
+  description: Programmatic access to Meetinity user services via the gateway.
+servers:
+- url: /
+  description: Default routing
+tags:
+- name: Authentication
+- name: Users
+paths:
+  /api/auth:
+    get:
+      operationId: v1_auth_root_get
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    post:
+      operationId: v1_auth_root_post
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    put:
+      operationId: v1_auth_root_put
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    delete:
+      operationId: v1_auth_root_delete
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    patch:
+      operationId: v1_auth_root_patch
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    options:
+      operationId: v1_auth_root_options
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+  /api/auth/{subpath}:
+    get:
+      operationId: v1_auth_subpath_get
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v1_auth_subpath_post
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v1_auth_subpath_put
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v1_auth_subpath_delete
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v1_auth_subpath_patch
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v1_auth_subpath_options
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /v1/api/auth:
+    get:
+      operationId: v1_auth_root_get
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    post:
+      operationId: v1_auth_root_post
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    put:
+      operationId: v1_auth_root_put
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    delete:
+      operationId: v1_auth_root_delete
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    patch:
+      operationId: v1_auth_root_patch
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+    options:
+      operationId: v1_auth_root_options
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+  /v1/api/auth/{subpath}:
+    get:
+      operationId: v1_auth_subpath_get
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v1_auth_subpath_post
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v1_auth_subpath_put
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v1_auth_subpath_delete
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v1_auth_subpath_patch
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v1_auth_subpath_options
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /v2/api/auth:
+    get:
+      operationId: v2_auth_root_get
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+    post:
+      operationId: v2_auth_root_post
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+    put:
+      operationId: v2_auth_root_put
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+    delete:
+      operationId: v2_auth_root_delete
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+    patch:
+      operationId: v2_auth_root_patch
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+    options:
+      operationId: v2_auth_root_options
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+  /v2/api/auth/{subpath}:
+    get:
+      operationId: v2_auth_subpath_get
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v2_auth_subpath_post
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v2_auth_subpath_put
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v2_auth_subpath_delete
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v2_auth_subpath_patch
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v2_auth_subpath_options
+      summary: Authentication proxy
+      description: Forward authentication requests to the upstream user service.
+      tags:
+      - Authentication
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '429':
+          description: Rate limit exceeded.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /api/users:
+    get:
+      operationId: v1_users_root_get
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    post:
+      operationId: v1_users_root_post
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    put:
+      operationId: v1_users_root_put
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    delete:
+      operationId: v1_users_root_delete
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    patch:
+      operationId: v1_users_root_patch
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    options:
+      operationId: v1_users_root_options
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+  /api/users/{subpath}:
+    get:
+      operationId: v1_users_subpath_get
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v1_users_subpath_post
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v1_users_subpath_put
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v1_users_subpath_delete
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v1_users_subpath_patch
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v1_users_subpath_options
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /v1/api/users:
+    get:
+      operationId: v1_users_root_get
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    post:
+      operationId: v1_users_root_post
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    put:
+      operationId: v1_users_root_put
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    delete:
+      operationId: v1_users_root_delete
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    patch:
+      operationId: v1_users_root_patch
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    options:
+      operationId: v1_users_root_options
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+  /v1/api/users/{subpath}:
+    get:
+      operationId: v1_users_subpath_get
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v1_users_subpath_post
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v1_users_subpath_put
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v1_users_subpath_delete
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v1_users_subpath_patch
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v1_users_subpath_options
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /v2/api/users:
+    get:
+      operationId: v2_users_root_get
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    post:
+      operationId: v2_users_root_post
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    put:
+      operationId: v2_users_root_put
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    delete:
+      operationId: v2_users_root_delete
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    patch:
+      operationId: v2_users_root_patch
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    options:
+      operationId: v2_users_root_options
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security: []
+  /v2/api/users/{subpath}:
+    get:
+      operationId: v2_users_subpath_get
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v2_users_subpath_post
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v2_users_subpath_put
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v2_users_subpath_delete
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v2_users_subpath_patch
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v2_users_subpath_options
+      summary: User management proxy
+      description: Proxy user management operations requiring JWT authentication.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /api/profile:
+    get:
+      operationId: v1_profile_root_get
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    post:
+      operationId: v1_profile_root_post
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    put:
+      operationId: v1_profile_root_put
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    delete:
+      operationId: v1_profile_root_delete
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    patch:
+      operationId: v1_profile_root_patch
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    options:
+      operationId: v1_profile_root_options
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+  /api/profile/{subpath}:
+    get:
+      operationId: v1_profile_subpath_get
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v1_profile_subpath_post
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v1_profile_subpath_put
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v1_profile_subpath_delete
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v1_profile_subpath_patch
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v1_profile_subpath_options
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /v1/api/profile:
+    get:
+      operationId: v1_profile_root_get
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    post:
+      operationId: v1_profile_root_post
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    put:
+      operationId: v1_profile_root_put
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    delete:
+      operationId: v1_profile_root_delete
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    patch:
+      operationId: v1_profile_root_patch
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+    options:
+      operationId: v1_profile_root_options
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+  /v1/api/profile/{subpath}:
+    get:
+      operationId: v1_profile_subpath_get
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v1_profile_subpath_post
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v1_profile_subpath_put
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v1_profile_subpath_delete
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v1_profile_subpath_patch
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v1_profile_subpath_options
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v1
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+  /v2/api/profile:
+    get:
+      operationId: v2_profile_root_get
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    post:
+      operationId: v2_profile_root_post
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    put:
+      operationId: v2_profile_root_put
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    delete:
+      operationId: v2_profile_root_delete
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    patch:
+      operationId: v2_profile_root_patch
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+    options:
+      operationId: v2_profile_root_options
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security: []
+  /v2/api/profile/{subpath}:
+    get:
+      operationId: v2_profile_subpath_get
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    post:
+      operationId: v2_profile_subpath_post
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    put:
+      operationId: v2_profile_subpath_put
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    delete:
+      operationId: v2_profile_subpath_delete
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    patch:
+      operationId: v2_profile_subpath_patch
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+    options:
+      operationId: v2_profile_subpath_options
+      summary: Profile proxy
+      description: Expose profile operations for authenticated users.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Successful proxy response.
+        '502':
+          description: Upstream service returned an error.
+        '401':
+          description: Missing or invalid JWT.
+      x-api-version: v2
+      security: []
+      parameters:
+      - name: subpath
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Additional path segments forwarded upstream.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

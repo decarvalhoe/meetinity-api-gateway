@@ -55,6 +55,7 @@ def test_proxy_tracing_creates_spans(monkeypatch):
     monkeypatch.setattr(app_module, "configure_tracing", lambda app: None)
 
     app = create_app()
+    app.config["TESTING"] = True
 
     tracing_module._provider = None
     tracing_module._requests_instrumented = False
