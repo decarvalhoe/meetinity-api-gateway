@@ -36,15 +36,57 @@ def _forward(path):
     except requests.RequestException:
         return jsonify({"error": "Bad gateway"}), 502
 
-    response_headers = None
+    response_headers = [
+        (key, value)
+        for key, value in resp.headers.items()
+        if key.lower() != "set-cookie"
+    ]
+
     raw_headers = getattr(getattr(resp, "raw", None), "headers", None)
+    set_cookie_values = None
+
     if raw_headers is not None:
-        try:
-            response_headers = list(raw_headers.items())
-        except (TypeError, AttributeError):
-            response_headers = None
-    if response_headers is None:
-        response_headers = list(resp.headers.items())
+        for accessor in ("get_all", "getlist"):
+            getter = getattr(raw_headers, accessor, None)
+            if callable(getter):
+                try:
+                    values = getter("Set-Cookie")
+                except TypeError:
+                    continue
+                if values:
+                    if isinstance(values, (list, tuple)):
+                        set_cookie_values = list(values)
+                    else:
+                        set_cookie_values = [values]
+                    break
+
+        if set_cookie_values:
+            set_cookie_values = [
+                value for value in set_cookie_values if isinstance(value, (str, bytes))
+            ]
+            if not set_cookie_values:
+                set_cookie_values = None
+
+        if set_cookie_values is None:
+            try:
+                values = [
+                    value
+                    for header, value in raw_headers.items()
+                    if header.lower() == "set-cookie"
+                ]
+            except (TypeError, AttributeError):
+                values = None
+            if values:
+                filtered_values = [
+                    value for value in values if isinstance(value, (str, bytes))
+                ]
+                set_cookie_values = filtered_values or None
+
+    if set_cookie_values is None and "Set-Cookie" in resp.headers:
+        set_cookie_values = [resp.headers.get("Set-Cookie")]
+
+    if set_cookie_values:
+        response_headers.extend(("Set-Cookie", value) for value in set_cookie_values)
 
     return Response(resp.content, resp.status_code, response_headers)
 
