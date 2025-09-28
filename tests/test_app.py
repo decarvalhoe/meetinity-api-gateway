@@ -24,6 +24,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.app import create_app  # noqa: E402
 
 
+def _patch_proxy_session(monkeypatch, handler):
+    mock_session = Mock()
+    mock_session.request = handler
+    monkeypatch.setattr("src.routes.proxy._get_http_session", lambda: mock_session)
+    return mock_session
+
+
 def _create_app_without_cors_origins(monkeypatch):
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
     monkeypatch.setenv("USER_SERVICE_URL", "http://upstream")
@@ -100,9 +107,7 @@ def test_options_users_without_authorization(client):
 def test_auth_proxy_failure(client, monkeypatch):
     def fail_request(*args, **kwargs):
         raise requests.RequestException()
-    monkeypatch.setattr(
-        "src.routes.proxy.requests.request", fail_request
-    )
+    _patch_proxy_session(monkeypatch, fail_request)
     response = client.post("/api/auth/login")
     assert response.status_code == 502
     assert response.json == {"error": {"code": 502, "message": "Bad Gateway"}}
@@ -120,9 +125,7 @@ def test_proxy_preserves_duplicate_query_params(client, monkeypatch):
         mock_resp.headers = {}
         return mock_resp
 
-    monkeypatch.setattr(
-        "src.routes.proxy.requests.request", fake_request
-    )
+    _patch_proxy_session(monkeypatch, fake_request)
 
     response = client.get("/api/auth/tokens?tag=a&tag=b")
 
@@ -142,9 +145,7 @@ def test_proxy_preserves_multiple_set_cookie_headers(client, monkeypatch):
     mock_resp.raw = Mock(headers=header_dict)
     mock_resp.headers = {}
 
-    monkeypatch.setattr(
-        "src.routes.proxy.requests.request", lambda *args, **kwargs: mock_resp
-    )
+    _patch_proxy_session(monkeypatch, lambda *args, **kwargs: mock_resp)
 
     response = client.get("/api/auth/session")
 
@@ -166,7 +167,7 @@ def test_proxy_generates_request_id_and_forwarded_headers(client, monkeypatch):
         mock_resp.headers = {}
         return mock_resp
 
-    monkeypatch.setattr("src.routes.proxy.requests.request", fake_request)
+    _patch_proxy_session(monkeypatch, fake_request)
 
     response = client.get(
         "/api/auth/session",
@@ -193,7 +194,7 @@ def test_proxy_appends_forwarded_for_header(client, monkeypatch):
         mock_resp.headers = {}
         return mock_resp
 
-    monkeypatch.setattr("src.routes.proxy.requests.request", fake_request)
+    _patch_proxy_session(monkeypatch, fake_request)
 
     response = client.get(
         "/api/auth/session",
@@ -238,9 +239,7 @@ def test_request_logging_includes_user_id(client, monkeypatch):
     mock_resp.content = b"{}"
     mock_resp.headers = {}
 
-    monkeypatch.setattr(
-        "src.routes.proxy.requests.request", lambda *args, **kwargs: mock_resp
-    )
+    _patch_proxy_session(monkeypatch, lambda *args, **kwargs: mock_resp)
 
     handler = _CapturingHandler()
     handler.setLevel(logging.INFO)

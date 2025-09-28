@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Tuple
+from typing import Dict, Iterable, Sequence, Tuple
 
 import requests
 import time
@@ -26,9 +26,37 @@ from ..middleware.resilience import (
 from ..middleware.jwt import require_jwt
 from ..services.registry import ServiceInstance, ServiceRegistry
 from ..utils.responses import error_response
+from ..performance.cache import Cache, SingleFlight
 
 proxy_bp = Blueprint("proxy", __name__)
 tracer = trace.get_tracer(__name__)
+
+
+def _get_http_session() -> requests.Session:
+    session = current_app.extensions.get("http_session")
+    if session is None:
+        session = requests.Session()
+        current_app.extensions["http_session"] = session
+    return session
+
+
+def _build_cache_key(params: Sequence[tuple[str, str]], vary_headers: Sequence[str]) -> str:
+    method_path = f"{request.method.upper()}:{request.path}"
+    canonical_params = "&".join(f"{key}={value}" for key, value in sorted(params))
+    header_parts = []
+    seen = set()
+    for header in vary_headers:
+        if header in seen:
+            continue
+        seen.add(header)
+        value = request.headers.get(header, "")
+        header_parts.append(f"{header.lower()}={value}")
+    parts = [method_path]
+    if canonical_params:
+        parts.append(f"q={canonical_params}")
+    if header_parts:
+        parts.append("h=" + ",".join(sorted(header_parts)))
+    return "|".join(parts)
 
 
 def _forward(path: str) -> Response:
@@ -101,6 +129,7 @@ def _forward(path: str) -> Response:
         )
         service_name = current_app.config.get("USER_SERVICE_NAME", "user-service")
         strategy_name = current_app.config.get("LOAD_BALANCER_STRATEGY", "round_robin")
+        session = _get_http_session()
 
         def perform_request(instance: ServiceInstance) -> requests.Response:
             base_url = instance.url.rstrip("/")
@@ -118,7 +147,7 @@ def _forward(path: str) -> Response:
             ) as upstream_span:
                 start = time.perf_counter()
                 try:
-                    response = requests.request(
+                    response = session.request(
                         method=request.method,
                         url=url,
                         headers=headers,
@@ -157,26 +186,104 @@ def _forward(path: str) -> Response:
                     )
                 return response
 
-        try:
-            if registry and resilience:
-                upstream_response = resilience.execute(
-                    registry=registry,
-                    service_name=service_name,
-                    strategy_name=strategy_name,
-                    request_func=perform_request,
-                )
-            else:
-                base_url = current_app.config.get("USER_SERVICE_URL", "").rstrip("/")
-                if not base_url:
+        def _execute_upstream() -> ResponseMessage:
+            try:
+                if registry and resilience:
+                    upstream_response = resilience.execute(
+                        registry=registry,
+                        service_name=service_name,
+                        strategy_name=strategy_name,
+                        request_func=perform_request,
+                    )
+                else:
+                    base_url = current_app.config.get("USER_SERVICE_URL", "").rstrip("/")
+                    if not base_url:
+                        span.set_status(
+                            Status(
+                                status_code=StatusCode.ERROR,
+                                description="upstream_not_configured",
+                            )
+                        )
+                        raise ServiceUnavailableError("Upstream not configured")
+                    fallback_instance = ServiceInstance(service_name=service_name, url=base_url)
+                    upstream_response = perform_request(fallback_instance)
+            except ServiceUnavailableError:
+                raise
+            except UpstreamServiceError:
+                raise
+            except UpstreamRequestError:
+                raise
+
+            response_message = ResponseMessage(
+                status_code=upstream_response.status_code,
+                headers=tuple(upstream_response.headers.items()),
+                body=upstream_response.content,
+                content_type=upstream_response.headers.get("Content-Type"),
+            )
+
+            if pipeline and request_message:
+                try:
+                    with tracer.start_as_current_span("proxy.transform_response"):
+                        response_message = pipeline.apply_response(
+                            response_message, request_message=request_message
+                        )
+                except OpenAPIValidationError as exc:
+                    span.record_exception(exc)
                     span.set_status(
                         Status(
                             status_code=StatusCode.ERROR,
-                            description="upstream_not_configured",
+                            description="response_validation_failed",
                         )
                     )
-                    return error_response(503, "Service Unavailable")
-                fallback_instance = ServiceInstance(service_name=service_name, url=base_url)
-                upstream_response = perform_request(fallback_instance)
+                    raise UpstreamServiceError("Upstream response validation error") from exc
+                except TransformationError as exc:
+                    span.record_exception(exc)
+                    span.set_status(
+                        Status(
+                            status_code=StatusCode.ERROR,
+                            description="response_transformation_failed",
+                        )
+                    )
+                    raise UpstreamServiceError("Response transformation error") from exc
+
+            response_headers = _filter_response_headers(response_message.headers)
+            set_cookie_headers = _extract_set_cookie_headers(upstream_response)
+            if set_cookie_headers:
+                response_headers.extend(("Set-Cookie", value) for value in set_cookie_headers)
+
+            final_message = ResponseMessage(
+                status_code=response_message.status_code,
+                headers=tuple(response_headers),
+                body=response_message.body,
+                content_type=response_message.content_type,
+            )
+            setattr(final_message, "_cacheable", not bool(set_cookie_headers))
+            return final_message
+
+        cache: Cache | None = current_app.extensions.get("response_cache")
+        coalescer: SingleFlight | None = current_app.extensions.get("request_coalescer")
+        vary_headers: Sequence[str] = current_app.config.get("CACHE_VARY_HEADERS", ())
+        cache_key = None
+        cache_hit = False
+        response_message: ResponseMessage | None = None
+
+        def _cache_predicate(message: ResponseMessage) -> bool:
+            return bool(getattr(message, "_cacheable", True))
+
+        try:
+            if request.method.upper() == "GET" and cache:
+                cache_key = _build_cache_key(tuple(params), vary_headers)
+                response_message, cache_hit = cache.get_or_set(
+                    cache_key,
+                    _execute_upstream,
+                    ttl=current_app.config.get("CACHE_DEFAULT_TTL"),
+                    cache_predicate=_cache_predicate,
+                )
+            elif request.method.upper() == "GET" and coalescer:
+                execution_key = _build_cache_key(tuple(params), vary_headers)
+                response_message = coalescer.execute(execution_key, _execute_upstream)
+            else:
+                response_message = _execute_upstream()
         except ServiceUnavailableError as exc:
             span.record_exception(exc)
             span.set_status(
@@ -196,47 +303,9 @@ def _forward(path: str) -> Response:
             )
             return error_response(502, "Bad Gateway")
 
-        response_message = ResponseMessage(
-            status_code=upstream_response.status_code,
-            headers=tuple(upstream_response.headers.items()),
-            body=upstream_response.content,
-            content_type=upstream_response.headers.get("Content-Type"),
-        )
-
-        if pipeline and request_message:
-            try:
-                with tracer.start_as_current_span("proxy.transform_response"):
-                    response_message = pipeline.apply_response(
-                        response_message, request_message=request_message
-                    )
-            except OpenAPIValidationError as exc:
-                span.record_exception(exc)
-                span.set_status(
-                    Status(
-                        status_code=StatusCode.ERROR,
-                        description="response_validation_failed",
-                    )
-                )
-                current_app.logger.warning("OpenAPI response validation failed: %s", exc)
-                return error_response(502, "Upstream response validation error")
-            except TransformationError as exc:
-                span.record_exception(exc)
-                span.set_status(
-                    Status(
-                        status_code=StatusCode.ERROR,
-                        description="response_transformation_failed",
-                    )
-                )
-                current_app.logger.warning("Response transformation failed: %s", exc)
-                return error_response(502, "Response transformation error")
-
-        response_headers = _filter_response_headers(response_message.headers)
-        set_cookie_headers = _extract_set_cookie_headers(upstream_response)
-        if set_cookie_headers:
-            response_headers.extend(("Set-Cookie", value) for value in set_cookie_headers)
-
         span.set_attribute("http.status_code", response_message.status_code)
         span.set_attribute("http.response_content_length", len(response_message.body or b""))
+        span.set_attribute("cache.hit", cache_hit)
         if response_message.status_code >= 500:
             span.set_status(Status(StatusCode.ERROR))
         else:
@@ -245,7 +314,7 @@ def _forward(path: str) -> Response:
         return Response(
             response_message.body,
             response_message.status_code,
-            response_headers,
+            list(response_message.headers),
         )
 
 
