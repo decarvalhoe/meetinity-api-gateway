@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from unittest.mock import Mock
 
 from src import app as app_module
 from src.app import create_app
@@ -19,6 +20,13 @@ def _build_response(status: int = 200, body: bytes | None = None):
     response.headers["Content-Type"] = "application/json"
     response.headers["X-Test"] = "true"
     return response
+
+
+def _patch_proxy_session(monkeypatch, handler):
+    mock_session = Mock()
+    mock_session.request = handler
+    monkeypatch.setattr("src.routes.proxy._get_http_session", lambda: mock_session)
+    return mock_session
 
 
 def test_metrics_endpoint_records_requests(monkeypatch):
@@ -55,7 +63,7 @@ def test_proxy_tracing_creates_spans(monkeypatch):
     app.extensions.pop("tracing_configured", None)
 
     tracing_module.configure_tracing(app)
-    monkeypatch.setattr("src.routes.proxy.requests.request", lambda **_: _build_response())
+    _patch_proxy_session(monkeypatch, lambda **_: _build_response())
 
     client = app.test_client()
     resp = client.get("/api/auth")

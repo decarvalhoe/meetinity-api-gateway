@@ -14,6 +14,13 @@ from src.services.registry import (
 )
 
 
+def _patch_proxy_session(monkeypatch, handler):
+    mock_session = Mock()
+    mock_session.request = handler
+    monkeypatch.setattr("src.routes.proxy._get_http_session", lambda: mock_session)
+    return mock_session
+
+
 @pytest.fixture(autouse=True)
 def _reset_env(monkeypatch):
     monkeypatch.setenv("USER_SERVICE_URL", "http://upstream")
@@ -97,7 +104,7 @@ def test_proxy_failover_between_instances(monkeypatch):
         mock_resp.raw = Mock(headers={})
         return mock_resp
 
-    monkeypatch.setattr("src.routes.proxy.requests.request", fake_request)
+    _patch_proxy_session(monkeypatch, fake_request)
 
     with app.test_client() as client:
         response = client.get("/api/auth/session")
@@ -131,7 +138,7 @@ def test_circuit_breaker_opens_after_failures(monkeypatch):
         calls += 1
         raise requests.RequestException("down")
 
-    monkeypatch.setattr("src.routes.proxy.requests.request", failing_request)
+    _patch_proxy_session(monkeypatch, failing_request)
 
     with app.test_client() as client:
         first = client.get("/api/auth/session")

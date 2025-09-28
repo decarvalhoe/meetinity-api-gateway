@@ -1,4 +1,6 @@
 """Meetinity API Gateway application factory."""
+import gzip
+import io
 import logging
 import os
 from typing import Any, Callable, Dict, Tuple
@@ -10,6 +12,13 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.exceptions import HTTPException
+
+try:  # pragma: no cover - optional dependency
+    import brotli  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    brotli = None
+
+from requests.adapters import HTTPAdapter
 
 from .middleware.logging import setup_request_logging
 from .middleware.resilience import ResilienceMiddleware
@@ -24,6 +33,7 @@ from .security.signatures import configure_request_signatures
 from .services.registry import create_service_registry
 from .transformations import build_pipeline, load_transformation_rules
 from .utils.responses import error_response
+from .performance.cache import Cache, InMemoryCacheBackend, RedisCacheBackend, SingleFlight
 
 
 def _rate_limit_key_func() -> str:
@@ -62,6 +72,177 @@ def _configure_ip_filters(app: Flask) -> None:
             app.logger.warning("Rejected request from blacklisted IP %s", remote_ip)
             return error_response(403, "Forbidden")
         return None
+
+
+def _configure_http_session(app: Flask) -> None:
+    """Initialise a pooled HTTP session for upstream calls."""
+
+    pool_connections = int(app.config.get("PROXY_POOL_CONNECTIONS", 10))
+    pool_maxsize = int(app.config.get("PROXY_POOL_MAXSIZE", 10))
+    session = requests.Session()
+    adapter = HTTPAdapter(pool_connections=pool_connections, pool_maxsize=pool_maxsize)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    if app.config.get("PROXY_SESSION_KEEPALIVE", True):
+        session.headers.setdefault("Connection", "keep-alive")
+    app.extensions["http_session"] = session
+    app.extensions["request_coalescer"] = SingleFlight()
+
+
+def _configure_cache(app: Flask) -> None:
+    """Configure the response cache if enabled."""
+
+    if not app.config.get("CACHE_ENABLED", False):
+        return
+
+    backend_name = str(app.config.get("CACHE_BACKEND", "memory")).lower()
+    backend: InMemoryCacheBackend | RedisCacheBackend
+    if backend_name == "redis":
+        redis_url = app.config.get("CACHE_REDIS_URL", "")
+        namespace = app.config.get("CACHE_REDIS_NAMESPACE", "api-gateway")
+        if redis_url:
+            try:
+                backend = RedisCacheBackend(redis_url, key_namespace=namespace)
+            except Exception as exc:  # pragma: no cover - fallback path
+                app.logger.warning(
+                    "Redis cache backend unavailable (%s), falling back to in-memory", exc
+                )
+                backend = InMemoryCacheBackend()
+        else:
+            app.logger.warning(
+                "CACHE_BACKEND is set to redis but CACHE_REDIS_URL is missing; using in-memory cache"
+            )
+            backend = InMemoryCacheBackend()
+    else:
+        backend = InMemoryCacheBackend()
+
+    ttl = app.config.get("CACHE_DEFAULT_TTL")
+    app.extensions["response_cache"] = Cache(backend, default_ttl=ttl)
+
+
+_COMPRESSIBLE_MIMETYPES = {
+    "application/json",
+    "application/javascript",
+    "application/xml",
+    "application/xhtml+xml",
+    "image/svg+xml",
+}
+
+
+def _parse_accept_encoding(header_value: str) -> list[tuple[str, float]]:
+    encodings: list[tuple[str, float]] = []
+    for part in header_value.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        encoding = token
+        q = 1.0
+        if ";" in token:
+            encoding, *params = [segment.strip() for segment in token.split(";")]
+            for param in params:
+                if param.startswith("q="):
+                    try:
+                        q = float(param[2:])
+                    except ValueError:
+                        q = 0.0
+        encodings.append((encoding, q))
+    encodings.sort(key=lambda item: item[1], reverse=True)
+    return encodings
+
+
+def _negotiate_encoding(header_value: str, available: tuple[str, ...]) -> str | None:
+    for encoding, quality in _parse_accept_encoding(header_value):
+        if quality <= 0:
+            continue
+        encoding = encoding.lower()
+        if encoding in available:
+            return encoding
+        if encoding == "*" and available:
+            return available[0]
+    return None
+
+
+def _configure_compression(app: Flask) -> None:
+    """Register an ``after_request`` hook that compresses responses."""
+
+    available_encodings: list[str] = []
+    if brotli is not None:
+        available_encodings.append("br")
+    available_encodings.append("gzip")
+    available = tuple(available_encodings)
+
+    min_size = int(app.config.get("COMPRESSION_MIN_SIZE", 512))
+    gzip_level = int(app.config.get("COMPRESSION_GZIP_LEVEL", 6))
+    brotli_quality = int(app.config.get("COMPRESSION_BR_QUALITY", 5))
+
+    def _compress(data: bytes, encoding: str) -> bytes:
+        if encoding == "gzip":
+            buffer = io.BytesIO()
+            with gzip.GzipFile(fileobj=buffer, mode="wb", compresslevel=gzip_level) as gz:
+                gz.write(data)
+            return buffer.getvalue()
+        if encoding == "br" and brotli is not None:
+            return brotli.compress(data, quality=brotli_quality)
+        raise ValueError(f"Unsupported encoding: {encoding}")
+
+    def _should_compress(response) -> bool:
+        if not app.config.get("COMPRESSION_ENABLED", False):
+            return False
+        if response.direct_passthrough:
+            return False
+        if request.method == "HEAD":
+            return False
+        if response.status_code < 200 or response.status_code >= 300:
+            return False
+        if "Content-Encoding" in response.headers:
+            return False
+
+        mimetype = (response.mimetype or "").lower()
+        length = response.calculate_content_length()
+        if mimetype.startswith("text/") or mimetype in _COMPRESSIBLE_MIMETYPES:
+            pass
+        else:
+            if length is None:
+                data = response.get_data()
+                if len(data) < min_size:
+                    return False
+            elif length < min_size:
+                return False
+            else:
+                return False
+
+        if length is not None and length < min_size:
+            return False
+        if length is None and len(response.get_data()) < min_size:
+            return False
+        return True
+
+    @app.after_request
+    def _compress_response(response):
+        if not _should_compress(response):
+            return response
+
+        encoding = _negotiate_encoding(request.headers.get("Accept-Encoding", ""), available)
+        if not encoding:
+            return response
+
+        data = response.get_data()
+        try:
+            compressed = _compress(data, encoding)
+        except ValueError:
+            return response
+
+        response.set_data(compressed)
+        response.headers["Content-Encoding"] = encoding
+        vary_header = response.headers.get("Vary")
+        if vary_header:
+            vary_values = {value.strip() for value in vary_header.split(",") if value.strip()}
+            vary_values.add("Accept-Encoding")
+            response.headers["Vary"] = ", ".join(sorted(vary_values))
+        else:
+            response.headers["Vary"] = "Accept-Encoding"
+        response.headers.pop("Content-Length", None)
+        return response
 
 
 HealthResult = Tuple[str, Dict[str, Any], int]
@@ -296,8 +477,15 @@ def create_app() -> Flask:
     app.config["OAUTH_CLIENT_SECRET"] = os.getenv("OAUTH_CLIENT_SECRET", "")
     app.config["OAUTH_AUDIENCE"] = os.getenv("OAUTH_AUDIENCE", "")
     app.config["OAUTH_CACHE_TTL"] = oauth_cache_ttl
+    # Performance tuning knobs for the proxy layer. See ``docs/operations/performance.md``
+    # for operator guidance on sizing and trade-offs.
     app.config["PROXY_TIMEOUT_CONNECT"] = float(os.getenv("PROXY_TIMEOUT_CONNECT", "2"))
     app.config["PROXY_TIMEOUT_READ"] = float(os.getenv("PROXY_TIMEOUT_READ", "10"))
+    app.config["PROXY_POOL_CONNECTIONS"] = int(os.getenv("PROXY_POOL_CONNECTIONS", "10"))
+    app.config["PROXY_POOL_MAXSIZE"] = int(os.getenv("PROXY_POOL_MAXSIZE", "10"))
+    app.config["PROXY_SESSION_KEEPALIVE"] = _parse_bool(
+        os.getenv("PROXY_SESSION_KEEPALIVE"), True
+    )
     app.config["RESILIENCE_MAX_RETRIES"] = int(os.getenv("RESILIENCE_MAX_RETRIES", "2"))
     app.config["RESILIENCE_BACKOFF_FACTOR"] = float(
         os.getenv("RESILIENCE_BACKOFF_FACTOR", "0.5")
@@ -311,6 +499,20 @@ def create_app() -> Flask:
     app.config["CIRCUIT_BREAKER_RESET_TIMEOUT"] = float(
         os.getenv("CIRCUIT_BREAKER_RESET_TIMEOUT", "30")
     )
+    app.config["CACHE_ENABLED"] = _parse_bool(os.getenv("CACHE_ENABLED"), True)
+    app.config["CACHE_BACKEND"] = os.getenv("CACHE_BACKEND", "memory")
+    app.config["CACHE_DEFAULT_TTL"] = float(os.getenv("CACHE_DEFAULT_TTL", "5"))
+    app.config["CACHE_REDIS_URL"] = os.getenv("CACHE_REDIS_URL", "")
+    app.config["CACHE_REDIS_NAMESPACE"] = os.getenv("CACHE_REDIS_NAMESPACE", "api-gateway")
+    app.config["CACHE_VARY_HEADERS"] = tuple(
+        _split_env_list(os.getenv("CACHE_VARY_HEADERS", "Authorization"))
+    )
+    app.config["COMPRESSION_ENABLED"] = _parse_bool(
+        os.getenv("COMPRESSION_ENABLED"), True
+    )
+    app.config["COMPRESSION_MIN_SIZE"] = int(os.getenv("COMPRESSION_MIN_SIZE", "512"))
+    app.config["COMPRESSION_GZIP_LEVEL"] = int(os.getenv("COMPRESSION_GZIP_LEVEL", "6"))
+    app.config["COMPRESSION_BR_QUALITY"] = int(os.getenv("COMPRESSION_BR_QUALITY", "5"))
 
     _configure_logging(app)
     configure_structured_logging(app)
@@ -350,6 +552,9 @@ def create_app() -> Flask:
     app.register_blueprint(proxy_bp)
     _register_health_endpoints(app)
     configure_tracing(app)
+    _configure_http_session(app)
+    _configure_cache(app)
+    _configure_compression(app)
 
     @app.errorhandler(429)
     def ratelimit_handler(_error):
