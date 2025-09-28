@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, current_app, jsonify, request
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -13,10 +13,49 @@ from werkzeug.exceptions import HTTPException
 
 from .middleware.logging import setup_request_logging
 from .middleware.resilience import ResilienceMiddleware
+from .security.api_keys import configure_api_keys
+from .security.oauth import OIDCProvider
+from .security.signatures import configure_request_signatures
 from .services.registry import create_service_registry
 from .utils.responses import error_response
 
-limiter = Limiter(key_func=get_remote_address)
+
+def _rate_limit_key_func() -> str:
+    header_name = current_app.config.get("API_KEY_HEADER", "X-API-Key")
+    api_key = request.headers.get(header_name)
+    return api_key or get_remote_address()
+
+
+limiter = Limiter(key_func=_rate_limit_key_func)
+
+
+def _split_env_list(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _parse_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _configure_ip_filters(app: Flask) -> None:
+    whitelist = set(app.config.get("IP_WHITELIST", set()))
+    blacklist = set(app.config.get("IP_BLACKLIST", set()))
+
+    if not whitelist and not blacklist:
+        return
+
+    @app.before_request
+    def _enforce_ip_rules():
+        remote_ip = request.remote_addr or ""
+        if whitelist and remote_ip not in whitelist:
+            app.logger.warning("Rejected request from non-whitelisted IP %s", remote_ip)
+            return error_response(403, "Forbidden")
+        if blacklist and remote_ip in blacklist:
+            app.logger.warning("Rejected request from blacklisted IP %s", remote_ip)
+            return error_response(403, "Forbidden")
+        return None
 
 
 def _configure_logging(app: Flask) -> None:
@@ -59,6 +98,15 @@ def create_app() -> Flask:
     load_dotenv()
     app = Flask(__name__)
 
+    api_keys_raw = os.getenv("API_KEYS", "")
+    signing_secrets_raw = os.getenv("SIGNING_SECRETS", "")
+    signature_headers_raw = os.getenv("SIGNATURE_HEADERS", "")
+    signature_exempt_raw = os.getenv("SIGNATURE_EXEMPT_PATHS", "/health")
+    api_key_exempt_raw = os.getenv("API_KEY_EXEMPT_PATHS", "/health")
+    ip_whitelist_raw = os.getenv("IP_WHITELIST", "")
+    ip_blacklist_raw = os.getenv("IP_BLACKLIST", "")
+    oauth_cache_ttl = int(os.getenv("OAUTH_CACHE_TTL", "300"))
+
     app.config["USER_SERVICE_URL"] = os.getenv("USER_SERVICE_URL", "")
     app.config["USER_SERVICE_NAME"] = os.getenv("USER_SERVICE_NAME", "user-service")
     app.config["USER_SERVICE_STATIC_INSTANCES"] = os.getenv(
@@ -75,6 +123,40 @@ def create_app() -> Flask:
     )
     app.config["JWT_SECRET"] = os.getenv("JWT_SECRET", "")
     app.config["RATE_LIMIT_AUTH"] = os.getenv("RATE_LIMIT_AUTH", "10/minute")
+    app.config["API_KEYS"] = api_keys_raw
+    app.config["API_KEY_HEADER"] = os.getenv("API_KEY_HEADER", "X-API-Key")
+    app.config["API_KEY_SALT"] = os.getenv("API_KEY_SALT", "")
+    app.config["API_KEY_HASH_ALGORITHM"] = os.getenv(
+        "API_KEY_HASH_ALGORITHM", "sha256"
+    )
+    app.config["API_KEY_REQUIRED"] = _parse_bool(
+        os.getenv("API_KEY_REQUIRED"), bool(api_keys_raw)
+    )
+    app.config["API_KEY_EXEMPT_PATHS"] = tuple(_split_env_list(api_key_exempt_raw))
+    app.config["SIGNING_SECRETS"] = signing_secrets_raw
+    app.config["REQUEST_SIGNATURES_ENABLED"] = _parse_bool(
+        os.getenv("REQUEST_SIGNATURES_ENABLED"), bool(signing_secrets_raw)
+    )
+    app.config["SIGNATURE_HEADER"] = os.getenv("SIGNATURE_HEADER", "X-Signature")
+    app.config["SIGNATURE_TIMESTAMP_HEADER"] = os.getenv(
+        "SIGNATURE_TIMESTAMP_HEADER", "X-Timestamp"
+    )
+    app.config["SIGNATURE_KEY_ID_HEADER"] = os.getenv(
+        "SIGNATURE_KEY_ID_HEADER", "X-Client-Id"
+    )
+    app.config["SIGNATURE_CLOCK_TOLERANCE"] = int(
+        os.getenv("SIGNATURE_CLOCK_TOLERANCE", "300")
+    )
+    app.config["SIGNATURE_HEADERS"] = _split_env_list(signature_headers_raw)
+    app.config["SIGNATURE_EXEMPT_PATHS"] = tuple(
+        _split_env_list(signature_exempt_raw)
+    )
+    app.config["IP_WHITELIST"] = set(_split_env_list(ip_whitelist_raw))
+    app.config["IP_BLACKLIST"] = set(_split_env_list(ip_blacklist_raw))
+    app.config["OAUTH_PROVIDER_URL"] = os.getenv("OAUTH_PROVIDER_URL", "")
+    app.config["OAUTH_CLIENT_SECRET"] = os.getenv("OAUTH_CLIENT_SECRET", "")
+    app.config["OAUTH_AUDIENCE"] = os.getenv("OAUTH_AUDIENCE", "")
+    app.config["OAUTH_CACHE_TTL"] = oauth_cache_ttl
     app.config["PROXY_TIMEOUT_CONNECT"] = float(os.getenv("PROXY_TIMEOUT_CONNECT", "2"))
     app.config["PROXY_TIMEOUT_READ"] = float(os.getenv("PROXY_TIMEOUT_READ", "10"))
     app.config["RESILIENCE_MAX_RETRIES"] = int(os.getenv("RESILIENCE_MAX_RETRIES", "2"))
@@ -96,6 +178,14 @@ def create_app() -> Flask:
 
     CORS(app, **_cors_configuration())
     limiter.init_app(app)
+    configure_api_keys(app)
+    configure_request_signatures(app)
+    _configure_ip_filters(app)
+
+    if app.config["OAUTH_PROVIDER_URL"]:
+        app.extensions["oidc_provider"] = OIDCProvider(
+            app.config["OAUTH_PROVIDER_URL"], cache_ttl=oauth_cache_ttl
+        )
 
     from .routes.proxy import proxy_bp
 
