@@ -56,7 +56,7 @@ def test_users_requires_jwt(client):
 
 
 def test_options_users_without_authorization(client):
-    response = client.open("/api/users", method="OPTIONS")
+    response = client.options("/api/users")
     assert response.status_code != 401
 
 
