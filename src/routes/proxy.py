@@ -8,7 +8,14 @@ import requests
 from flask import Blueprint, Response, current_app, g, request
 
 from ..app import limiter
+from ..middleware.resilience import (
+    ResilienceMiddleware,
+    ServiceUnavailableError,
+    UpstreamRequestError,
+    UpstreamServiceError,
+)
 from ..middleware.jwt import require_jwt
+from ..services.registry import ServiceInstance, ServiceRegistry
 from ..utils.responses import error_response
 
 proxy_bp = Blueprint("proxy", __name__)
@@ -17,31 +24,69 @@ proxy_bp = Blueprint("proxy", __name__)
 def _forward(path: str) -> Response:
     """Forward a request to the upstream user service."""
 
-    base_url = current_app.config.get("USER_SERVICE_URL", "").rstrip("/")
-    url = f"{base_url}/{path}" if path else base_url
-
     headers = _prepare_headers()
     data = request.get_data(cache=False)
     params = list(request.args.items(multi=True))
 
-    try:
-        resp = requests.request(
-            method=request.method,
-            url=url,
-            headers=headers,
-            params=params,
-            data=data,
-            timeout=(2, 10),
-        )
-    except requests.RequestException:
-        return error_response(502, "Bad Gateway")
+    timeout = (
+        current_app.config.get("PROXY_TIMEOUT_CONNECT", 2.0),
+        current_app.config.get("PROXY_TIMEOUT_READ", 10.0),
+    )
 
-    response_headers = _filter_response_headers(resp.headers.items())
-    set_cookie_headers = _extract_set_cookie_headers(resp)
+    registry: ServiceRegistry | None = current_app.extensions.get("service_registry")
+    resilience: ResilienceMiddleware | None = current_app.extensions.get(
+        "resilience_middleware"
+    )
+    service_name = current_app.config.get("USER_SERVICE_NAME", "user-service")
+    strategy_name = current_app.config.get("LOAD_BALANCER_STRATEGY", "round_robin")
+
+    def perform_request(instance: ServiceInstance) -> requests.Response:
+        base_url = instance.url.rstrip("/")
+        url = f"{base_url}/{path}" if path else base_url
+        try:
+            return requests.request(
+                method=request.method,
+                url=url,
+                headers=headers,
+                params=params,
+                data=data,
+                timeout=timeout,
+            )
+        except requests.RequestException as exc:
+            raise UpstreamRequestError(str(exc)) from exc
+
+    if registry and resilience:
+        try:
+            upstream_response = resilience.execute(
+                registry=registry,
+                service_name=service_name,
+                strategy_name=strategy_name,
+                request_func=perform_request,
+            )
+        except ServiceUnavailableError:
+            return error_response(503, "Service Unavailable")
+        except UpstreamServiceError:
+            return error_response(502, "Bad Gateway")
+    else:
+        base_url = current_app.config.get("USER_SERVICE_URL", "").rstrip("/")
+        if not base_url:
+            return error_response(503, "Service Unavailable")
+        fallback_instance = ServiceInstance(service_name=service_name, url=base_url)
+        try:
+            upstream_response = perform_request(fallback_instance)
+        except UpstreamRequestError:
+            return error_response(502, "Bad Gateway")
+
+    response_headers = _filter_response_headers(upstream_response.headers.items())
+    set_cookie_headers = _extract_set_cookie_headers(upstream_response)
     if set_cookie_headers:
         response_headers.extend(("Set-Cookie", value) for value in set_cookie_headers)
 
-    return Response(resp.content, resp.status_code, response_headers)
+    return Response(
+        upstream_response.content,
+        upstream_response.status_code,
+        response_headers,
+    )
 
 
 def _prepare_headers() -> Dict[str, str]:

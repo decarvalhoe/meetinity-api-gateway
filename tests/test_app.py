@@ -29,6 +29,7 @@ def _create_app_without_cors_origins(monkeypatch):
     monkeypatch.setenv("USER_SERVICE_URL", "http://upstream")
     monkeypatch.setenv("JWT_SECRET", "secret")
     monkeypatch.setenv("RATE_LIMIT_AUTH", "10/minute")
+    monkeypatch.setenv("RESILIENCE_BACKOFF_FACTOR", "0")
 
     mock_resp = Mock()
     mock_resp.status_code = 200
@@ -47,6 +48,7 @@ def app(monkeypatch):
     os.environ["CORS_ORIGINS"] = ""
     os.environ["JWT_SECRET"] = "secret"
     os.environ["RATE_LIMIT_AUTH"] = "10/minute"
+    os.environ["RESILIENCE_BACKOFF_FACTOR"] = "0"
 
     mock_resp = Mock()
     mock_resp.status_code = 200
@@ -126,7 +128,7 @@ def test_proxy_preserves_duplicate_query_params(client, monkeypatch):
 
     assert response.status_code == 200
     assert captured["params"] == [("tag", "a"), ("tag", "b")]
-    assert captured["timeout"] == (2, 10)
+    assert captured["timeout"] == (2.0, 10.0)
 
 
 def test_proxy_preserves_multiple_set_cookie_headers(client, monkeypatch):
