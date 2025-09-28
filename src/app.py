@@ -56,21 +56,24 @@ def create_app():
         Returns:
             Response: JSON response with health status of gateway and upstream services.
         """
-        status = "down"
+        upstream_status = "down"
+        overall_status = "down"
+        http_status = 503
+
         url = app.config["USER_SERVICE_URL"].rstrip("/")
         if url:
             try:
                 resp = requests.get(f"{url}/health", timeout=5)
                 if resp.status_code == 200:
-                    status = "up"
+                    upstream_status = "up"
+                    overall_status = "up"
+                    http_status = 200
             except requests.RequestException:
                 pass
-        overall_status = "ok" if status == "up" else "error"
-        http_status = 200 if status == "up" else 503
         return jsonify({
             "status": overall_status,
             "service": "api-gateway",
-            "upstreams": {"user_service": status},
+            "upstreams": {"user_service": upstream_status},
         }), http_status
 
     @app.errorhandler(429)
