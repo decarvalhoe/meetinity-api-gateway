@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meetinity-api-gateway-blue
+  labels:
+    app: meetinity-api-gateway
+    color: blue
+    component: gateway
+    managed-by: platform-team
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: meetinity-api-gateway
+      color: blue
+  template:
+    metadata:
+      labels:
+        app: meetinity-api-gateway
+        color: blue
+        component: gateway
+    spec:
+      containers:
+        - name: api-gateway
+          image: ghcr.io/meetinity/api-gateway:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: meetinity-api-gateway-config
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "750m"
+              memory: "512Mi"
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
+          env:
+            - name: GUNICORN_MAX_REQUESTS
+              value: "1000"
+            - name: GUNICORN_MAX_REQUESTS_JITTER
+              value: "100"
+            - name: PROXY_POOL_BLOCK
+              value: "true"
+      terminationGracePeriodSeconds: 45
