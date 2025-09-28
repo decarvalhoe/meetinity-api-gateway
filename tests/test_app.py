@@ -8,6 +8,23 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.app import create_app  # noqa: E402
 
 
+def _create_app_without_cors_origins(monkeypatch):
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    monkeypatch.setenv("USER_SERVICE_URL", "http://upstream")
+    monkeypatch.setenv("JWT_SECRET", "secret")
+    monkeypatch.setenv("RATE_LIMIT_AUTH", "10/minute")
+
+    mock_resp = Mock()
+    mock_resp.status_code = 200
+    monkeypatch.setattr(
+        "src.app.requests.get", lambda *args, **kwargs: mock_resp
+    )
+
+    app = create_app()
+    app.config["TESTING"] = True
+    return app
+
+
 @pytest.fixture
 def app(monkeypatch):
     os.environ["USER_SERVICE_URL"] = "http://upstream"
@@ -71,22 +88,18 @@ def test_auth_proxy_failure(client, monkeypatch):
 
 
 def test_cors_allows_any_origin_when_env_absent(monkeypatch):
-    monkeypatch.delenv("CORS_ORIGINS", raising=False)
-    monkeypatch.setenv("USER_SERVICE_URL", "http://upstream")
-    monkeypatch.setenv("JWT_SECRET", "secret")
-    monkeypatch.setenv("RATE_LIMIT_AUTH", "10/minute")
-
-    mock_resp = Mock()
-    mock_resp.status_code = 200
-    monkeypatch.setattr(
-        "src.app.requests.get", lambda *args, **kwargs: mock_resp
-    )
-
-    app = create_app()
-    app.config["TESTING"] = True
-    client = app.test_client()
-
+    app = _create_app_without_cors_origins(monkeypatch)
     origin = "https://example.com"
-    response = client.get("/health", headers={"Origin": origin})
+    with app.test_client() as client:
+        response = client.get("/health", headers={"Origin": origin})
+
+    assert response.headers.get("Access-Control-Allow-Origin") == origin
+
+
+def test_cors_allows_another_origin_when_env_absent(monkeypatch):
+    app = _create_app_without_cors_origins(monkeypatch)
+    origin = "https://another.test"
+    with app.test_client() as client:
+        response = client.get("/health", headers={"Origin": origin})
 
     assert response.headers.get("Access-Control-Allow-Origin") == origin

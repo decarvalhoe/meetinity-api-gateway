@@ -36,7 +36,7 @@ def create_app():
     if origins_env:
         origins = [o.strip() for o in origins_env.split(",") if o.strip()]
 
-    cors_kwargs = {"origins": origins} if origins else {}
+    cors_kwargs = {"origins": origins if origins else "*"}
     CORS(app, **cors_kwargs)
 
     # Rate limiter initialization
