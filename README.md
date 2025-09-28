@@ -1,63 +1,75 @@
 # Meetinity API Gateway
 
-This repository contains the API Gateway for the Meetinity platform, serving as the central entry point for all client requests and routing them to appropriate microservices.
+The Meetinity API Gateway is the single entry point for the Meetinity platform.
+It terminates client connections, authenticates traffic, applies cross-cutting
+policies (rate limiting, caching, observability) and proxies requests to the
+appropriate backend microservices.
 
-## Overview
+## Highlights
 
-The API Gateway is built with **Python Flask** and provides essential features like request routing, JWT authentication, rate limiting, and CORS handling. It acts as a reverse proxy and security layer for the Meetinity microservices architecture.
+- **Flexible routing** – Dynamic service discovery, weighted load balancing and
+  circuit-breaking middleware keep upstream traffic resilient.
+- **Security first** – JWT enforcement, structured logging, and configurable
+  CORS policies protect public endpoints.
+- **Observability built-in** – Prometheus metrics, distributed tracing hooks and
+  structured JSON logs enable end-to-end debugging.
+- **Performance ready** – Response caching with single-flight deduplication and
+  automated load tests (Locust/k6) guard latency SLAs.
 
-## Features
-
-- **Request Routing**: Intelligent routing of requests to appropriate backend services
-- **JWT Authentication**: Secure token-based authentication with middleware validation
-- **Rate Limiting**: Configurable rate limiting to prevent abuse and ensure service stability
-- **CORS Support**: Cross-Origin Resource Sharing configuration for web clients
-- **Health Monitoring**: Health check endpoints for service monitoring and load balancing
-- **Error Handling**: Standardized error responses and exception handling
-
-## Tech Stack
-
-- **Flask**: Lightweight Python web framework
-- **Flask-CORS**: Cross-Origin Resource Sharing support
-- **Flask-Limiter**: Rate limiting functionality
-- **PyJWT**: JSON Web Token implementation
-- **Requests**: HTTP library for upstream service communication
-- **Python-dotenv**: Environment variable management
-
-## Project Status
-
-- **Progress**: 40%
-- **Completed Features**: Basic routing, JWT middleware, rate limiting, CORS configuration, health checks
-- **Pending Features**: Service discovery, load balancing, request/response transformation, comprehensive logging
-
-## Setup
+## Getting started
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # update values if needed
-python src/app.py
+cp .env.example .env
+flask --app src.app run --debug
 ```
 
-## Testing
+Key environment variables are documented in
+[`docs/operations/deployment.md`](docs/operations/deployment.md) and cover rate
+limits, upstream timeouts, caching, JWT secrets and OpenTelemetry exporters.
 
-```bash
-pytest
-flake8
-```
+## Testing & quality gates
 
-## Configuration
+| Type | Command | Notes |
+| --- | --- | --- |
+| Unit / integration | `pytest` | Covers middleware, analytics, caching and service discovery. |
+| Load (Locust) | `locust -f tests/performance/locustfile.py --host=<gateway>` | Simulates mixed read/write workloads. |
+| Load (k6) | `k6 run tests/performance/k6-smoke.js --env GATEWAY_HOST=<url>` | Validates cache-heavy traffic patterns. |
 
-The gateway uses environment variables for configuration:
+The GitHub Actions workflow (`.github/workflows/ci.yml`) installs dependencies
+and runs `pytest` on every push and pull request. Add optional linters or type
+checkers by extending the workflow matrix.
 
-- `USER_SERVICE_URL`: URL of the user service
-- `JWT_SECRET`: Secret key for JWT token validation
-- `CORS_ORIGINS`: Comma-separated list of allowed CORS origins
-- `RATE_LIMIT_AUTH`: Rate limit for authentication endpoints (default: "10/minute")
-- `LOG_LEVEL`: Logging level for structured request logs (default: `INFO`)
+Install additional developer tooling (Locust, Bandit, pip-audit) with
+`pip install -r requirements-dev.txt`.
 
-## API Routes
+## Documentation map
 
-- `GET /health` - Health check endpoint
-- `POST /api/auth/*` - Authentication routes (rate limited)
-- `GET|POST|PUT|DELETE /api/users/*` - User management routes (JWT protected)
-- `GET|POST|PUT|DELETE /api/profile/*` - Profile management routes (JWT protected)
+- [`docs/performance/benchmarks.md`](docs/performance/benchmarks.md) – Latest
+  Locust/k6 benchmark results and SLA targets.
+- [`docs/security_audit.md`](docs/security_audit.md) – Release audit checklist
+  for static analysis, dependencies and incident response.
+- [`docs/operations`](docs/operations) – Deployment, performance tuning and
+  service discovery runbooks.
+- [`deploy/monitoring`](deploy/monitoring) – Prometheus/Alertmanager
+  configuration validated in staging (alerts routed to Slack).
+
+## Observability & monitoring
+
+- Exposes `/metrics` for Prometheus scraping (see `deploy/monitoring`).
+- Structured request logs (JSON) include request IDs, JWT subject and trace IDs
+  when OpenTelemetry is enabled.
+- Alerting rules detect error-rate spikes and latency SLO violations and trigger
+  Slack notifications via Alertmanager.
+
+## Contributing
+
+1. Create a feature branch.
+2. Run `pytest` locally and ensure load test scripts still execute.
+3. Update documentation/CHANGELOG entries for user-facing changes.
+4. Open a pull request; CI must pass before merging.
+
+See [`docs/developer`](docs/developer) for module-specific guidelines and
+transformation examples.
