@@ -1,75 +1,71 @@
-# Meetinity API Gateway
+# 🚀 Meetinity API Gateway
 
-The Meetinity API Gateway is the single entry point for the Meetinity platform.
-It terminates client connections, authenticates traffic, applies cross-cutting
-policies (rate limiting, caching, observability) and proxies requests to the
-appropriate backend microservices.
+## ⚠️ **REPOSITORY ARCHIVED - MOVED TO MONOREPO**
 
-## Highlights
+**This repository has been archived and is now read-only.**
 
-- **Flexible routing** – Dynamic service discovery, weighted load balancing and
-  circuit-breaking middleware keep upstream traffic resilient.
-- **Security first** – JWT enforcement, structured logging, and configurable
-  CORS policies protect public endpoints.
-- **Observability built-in** – Prometheus metrics, distributed tracing hooks and
-  structured JSON logs enable end-to-end debugging.
-- **Performance ready** – Response caching with single-flight deduplication and
-  automated load tests (Locust/k6) guard latency SLAs.
+### 📍 **New Location**
+All development has moved to the **Meetinity monorepo**:
 
-## Getting started
+**🔗 https://github.com/decarvalhoe/meetinity**
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-flask --app src.app run --debug
+The API Gateway service is now located at:
+```
+meetinity/services/api-gateway/
 ```
 
-Key environment variables are documented in
-[`docs/operations/deployment.md`](docs/operations/deployment.md) and cover rate
-limits, upstream timeouts, caching, JWT secrets and OpenTelemetry exporters.
+### 🔄 **Migration Complete**
+- ✅ **All code** has been migrated with complete history
+- ✅ **Latest features** including performance testing, monitoring, and security enhancements
+- ✅ **CI/CD pipeline** integrated with unified deployment
+- ✅ **Documentation** updated and consolidated
 
-## Testing & quality gates
+### 🛠️ **For Developers**
 
-| Type | Command | Notes |
-| --- | --- | --- |
-| Unit / integration | `pytest` | Covers middleware, analytics, caching and service discovery. |
-| Load (Locust) | `locust -f tests/performance/locustfile.py --host=<gateway>` | Simulates mixed read/write workloads. |
-| Load (k6) | `k6 run tests/performance/k6-smoke.js --env GATEWAY_HOST=<url>` | Validates cache-heavy traffic patterns. |
+#### **Clone the monorepo:**
+```bash
+git clone https://github.com/decarvalhoe/meetinity.git
+cd meetinity/services/api-gateway
+```
 
-The GitHub Actions workflow (`.github/workflows/ci.yml`) installs dependencies
-and runs `pytest` on every push and pull request. Add optional linters or type
-checkers by extending the workflow matrix.
+#### **Development workflow:**
+```bash
+# Start all services
+docker compose -f docker-compose.dev.yml up
 
-Install additional developer tooling (Locust, Bandit, pip-audit) with
-`pip install -r requirements-dev.txt`.
+# API Gateway specific development
+cd services/api-gateway
+# Your development commands here
+```
 
-## Documentation map
+### 📚 **Documentation**
+- **Service Documentation**: `meetinity/services/api-gateway/README.md`
+- **Infrastructure Guide**: `meetinity/docs/service-inventory.md`
+- **Deployment Guide**: `meetinity/infra/helm/meetinity/`
 
-- [`docs/performance/benchmarks.md`](docs/performance/benchmarks.md) – Latest
-  Locust/k6 benchmark results and SLA targets.
-- [`docs/security_audit.md`](docs/security_audit.md) – Release audit checklist
-  for static analysis, dependencies and incident response.
-- [`docs/operations`](docs/operations) – Deployment, performance tuning and
-  service discovery runbooks.
-- [`deploy/monitoring`](deploy/monitoring) – Prometheus/Alertmanager
-  configuration validated in staging (alerts routed to Slack).
+### 🏗️ **Architecture Benefits**
+The monorepo provides:
+- **Unified CI/CD** for all Meetinity services
+- **Consistent Docker builds** and deployment
+- **Centralized configuration** management
+- **Simplified dependency** management
+- **Cross-service integration** testing
 
-## Observability & monitoring
+---
 
-- Exposes `/metrics` for Prometheus scraping (see `deploy/monitoring`).
-- Structured request logs (JSON) include request IDs, JWT subject and trace IDs
-  when OpenTelemetry is enabled.
-- Alerting rules detect error-rate spikes and latency SLO violations and trigger
-  Slack notifications via Alertmanager.
+**📅 Archived on:** September 29, 2025  
+**🔗 Monorepo:** https://github.com/decarvalhoe/meetinity  
+**📧 Questions:** Please open issues in the monorepo
 
-## Contributing
+---
 
-1. Create a feature branch.
-2. Run `pytest` locally and ensure load test scripts still execute.
-3. Update documentation/CHANGELOG entries for user-facing changes.
-4. Open a pull request; CI must pass before merging.
+## 📋 **Original Service Description**
 
-See [`docs/developer`](docs/developer) for module-specific guidelines and
-transformation examples.
+The Meetinity API Gateway was the single entry point for the Meetinity platform, providing flexible routing, security-first design, built-in observability, and performance-ready features including response caching and automated load tests.
+
+**Key features that are now available in the monorepo:**
+- Dynamic service discovery and load balancing
+- JWT enforcement and CORS policies  
+- Prometheus metrics and distributed tracing
+- Locust/k6 performance testing scripts
+- Security audit checklist and benchmarks
